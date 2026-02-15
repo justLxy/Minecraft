@@ -395,6 +395,33 @@
             return null;
         }
 
+        function extractOrderInfo(yaml) {
+            if (!yaml) return { mode: 'unknown' };
+
+            // 升级订单：补价 + 原价
+            // 示例：# 玩家升级订单 - 补价: 1 RMB (原价: 50)
+            const up = yaml.match(/玩家升级订单\s*-\s*补价\s*[:：]\s*(\d+)\s*RMB\s*\(原价\s*[:：]\s*(\d+)\s*\)/);
+            if (up) {
+                return {
+                    mode: 'upgrade',
+                    payPrice: Number(up[1]),
+                    originalPrice: Number(up[2])
+                };
+            }
+
+            // 定制订单：价格
+            // 示例：# 玩家定制订单 - 价格: 51 RMB
+            const cu = yaml.match(/玩家定制订单\s*-\s*价格\s*[:：]\s*(\d+)\s*RMB/);
+            if (cu) {
+                return {
+                    mode: 'custom',
+                    payPrice: Number(cu[1])
+                };
+            }
+
+            return { mode: 'unknown' };
+        }
+
         function decodeAndValidateSignData(yaml) {
             const b64 = extractSignatureBase64(yaml);
             if (!b64) {
@@ -461,7 +488,12 @@
                 }
             }
 
-            return { ...signData, p: pNum, a: sanitizedAttrs };
+            // 可选字段（新版本签名会写入）：m=模式, op=原价, fp=当前总价
+            const mode = signData.m === 'upgrade' || signData.m === 'custom' ? signData.m : undefined;
+            const opNum = signData.op == null ? undefined : Number(signData.op);
+            const fpNum = signData.fp == null ? undefined : Number(signData.fp);
+
+            return { ...signData, m: mode, op: opNum, fp: fpNum, p: pNum, a: sanitizedAttrs };
         }
 
         function toggleUpgradePanel() {
@@ -487,6 +519,15 @@
 
             try {
                 const signData = decodeAndValidateSignData(yaml);
+                const orderInfo = extractOrderInfo(yaml);
+
+                // 识别“升级订单(补价)”时，原价应从标题或签名 op 取，而不是 signData.p
+                let parsedOriginalPrice = null;
+                if (signData.m === 'upgrade' && Number.isFinite(signData.op)) {
+                    parsedOriginalPrice = signData.op;
+                } else if (orderInfo.mode === 'upgrade' && Number.isFinite(orderInfo.originalPrice)) {
+                    parsedOriginalPrice = orderInfo.originalPrice;
+                }
 
                 // 1. 恢复数据
                 document.getElementById('itemSlot').value = signData.s;
@@ -505,9 +546,12 @@
 
                 // 2. 开启升级模式
                 upgradeMode = true;
-                originalPrice = parseInt(String(signData.p), 10);
+                originalPrice = parseInt(String(parsedOriginalPrice ?? signData.p), 10);
                 
-                msgDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 加载成功！原价: ${originalPrice} RMB。请在下方修改属性，差价将自动计算。</span>`;
+                const extraNote = (orderInfo.mode === 'upgrade' || signData.m === 'upgrade')
+                    ? "<br><span style='color:#a3a3a3;font-size:0.8rem'>(检测到你粘贴的是“升级订单(补价)”，已按其中的原价导入；更推荐粘贴你原始的定制订单配置作为升级基底)</span>"
+                    : "";
+                msgDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 加载成功！原价: ${originalPrice} RMB。请在下方修改属性，差价将自动计算。</span>${extraNote}`;
                 
                 // 3. 触发更新
                 updatePreview();
@@ -1023,11 +1067,22 @@
             // 生成校验签名
             // 签名包含：价格 + 所有属性值 + 盐值
             // 这样即使玩家改了 YAML 里的价格注释，或者改了属性值，签名都会对不上
+            // 注意：升级模式下 price 是“补价”，不是当前总价；这里额外记录原价/总价供管理员验证。
+            const prevUpgradeMode = upgradeMode;
+            const prevOriginalPrice = originalPrice;
+            upgradeMode = false;
+            const fullPriceNow = calculatePrice();
+            upgradeMode = prevUpgradeMode;
+            originalPrice = prevOriginalPrice;
+
             const signData = {
                 p: price,
                 s: slot,
                 a: activeAttrs,
                 t: Date.now(),
+                m: upgradeMode ? 'upgrade' : 'custom',
+                op: upgradeMode ? originalPrice : undefined,
+                fp: fullPriceNow,
                 salt: SECRET_SALT
             };
             // 简单的 Base64 编码作为签名 (防小白修改)
@@ -1079,6 +1134,7 @@
 
             try {
                 const signData = decodeAndValidateSignData(yaml);
+                const orderInfo = extractOrderInfo(yaml);
 
                 // 恢复数据到界面
                 // 1. 恢复部位 (必须先恢复部位，否则 updateVisibleAttributes 会隐藏属性导致无法赋值)
@@ -1098,17 +1154,43 @@
                     }
                 }
 
-                // 4. 重新计算当前价格 (使用网页当前的计费逻辑)
-                const currentPrice = calculatePrice();
+                // 4. 重新计算当前“总价”（必须忽略 upgradeMode，避免返回补价）
+                const prevUpgradeMode = upgradeMode;
+                const prevOriginalPrice = originalPrice;
+                upgradeMode = false;
+                const fullPriceNow = calculatePrice();
+                upgradeMode = prevUpgradeMode;
+                originalPrice = prevOriginalPrice;
+
+                // 5. 根据订单类型验证金额
+                const payFromSign = Number(signData.p);
+                const mode = signData.m || orderInfo.mode || 'custom';
+
+                if (mode === 'upgrade') {
+                    const op = Number.isFinite(signData.op) ? signData.op : orderInfo.originalPrice;
+                    if (!Number.isFinite(op)) {
+                        resultDiv.innerHTML = `<span style='color: #fbbf24;'>警告：检测到升级订单，但缺少原价信息，无法严格验证补价。</span><br>签名应付: ${payFromSign} | 当前总价: ${fullPriceNow}`;
+                        updatePreview();
+                        return;
+                    }
+
+                    const expectedPay = Math.max(fullPriceNow - op, 0);
+                    if (expectedPay == payFromSign) {
+                        resultDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 验证通过！(升级订单)</span><br>原价: ${op} | 当前总价: ${fullPriceNow} | 应补: ${expectedPay}`;
+                    } else {
+                        resultDiv.innerHTML = `<span style='color: #fbbf24;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> 警告：补价不匹配！(升级订单)</span><br>签名补价: ${payFromSign} | 计算应补: ${expectedPay}<br>原价: ${op} | 当前总价: ${fullPriceNow}`;
+                    }
+
+                    updatePreview();
+                    return;
+                }
                 
-                // 5. 验证价格一致性
-                // signData.p 是玩家生成配置时的价格
-                // currentPrice 是管理员现在计算出的价格
-                if (currentPrice == signData.p) {
-                    resultDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 验证通过！</span><br>原始价格: ${signData.p} | 当前计算: ${currentPrice}<br>配置已导入界面，您可以检查属性是否正确。`;
+                // 定制订单：验证总价一致性
+                if (fullPriceNow == payFromSign) {
+                    resultDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 验证通过！</span><br>签名价格: ${payFromSign} | 当前计算: ${fullPriceNow}<br>配置已导入界面，您可以检查属性是否正确。`;
                     updatePreview(); // 更新预览
                 } else {
-                    resultDiv.innerHTML = `<span style='color: #fbbf24;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> 警告：价格不匹配！</span><br>签名价格: ${signData.p} | 实际应付: ${currentPrice}<br>可能原因：玩家修改了属性、P图改了价格，或者您的计费规则已更新。`;
+                    resultDiv.innerHTML = `<span style='color: #fbbf24;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> 警告：价格不匹配！</span><br>签名价格: ${payFromSign} | 当前计算: ${fullPriceNow}<br>可能原因：玩家修改了属性、P图改了价格，或者您的计费规则已更新。`;
                     updatePreview();
                 }
 
