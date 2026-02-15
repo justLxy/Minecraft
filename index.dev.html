@@ -113,6 +113,18 @@
             border-color: var(--accent-color);
         }
 
+        /* 必填项校验 */
+        .field-invalid {
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+        }
+        button.action-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+            background: #555;
+        }
+
         .slider-container {
             display: flex;
             align-items: center;
@@ -274,11 +286,11 @@
             <div class="form-row">
                 <div class="form-group">
                     <label>玩家 ID</label>
-                    <input type="text" id="playerId" placeholder="输入你的游戏ID" oninput="updatePreview()">
+                    <input type="text" id="playerId" placeholder="输入你的游戏ID" oninput="updatePreview()" required>
                 </div>
                 <div class="form-group">
                     <label>装备类型 (材质ID)</label>
-                    <input type="text" id="itemMaterial" list="material_list" placeholder="输入材质英文名 (如 DIAMOND_SWORD)" oninput="updatePreview()" value="WOODEN_SWORD">
+                    <input type="text" id="itemMaterial" list="material_list" placeholder="输入材质英文名 (如 DIAMOND_SWORD)" oninput="updatePreview()" value="WOODEN_SWORD" required>
                     <datalist id="material_list">
                         <!-- 武器 -->
                         <option value="WOODEN_SWORD">木剑</option>
@@ -320,7 +332,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label>武器名称</label>
-                    <input type="text" id="itemName" value="&c定制武器" maxlength="16" placeholder="最多10字 (含颜色代码限制16字符)" oninput="updatePreview()">
+                    <input type="text" id="itemName" value="&c定制武器" maxlength="16" placeholder="最多10字 (含颜色代码限制16字符)" oninput="updatePreview()" required>
                 </div>
                 <div class="form-group">
                     <label>装备部位</label>
@@ -336,7 +348,7 @@
             </div>
             <div class="form-group">
                 <label>背景故事 (最多5行，每行15字)</label>
-                <textarea id="itemLore" rows="5" placeholder="输入背景故事..." oninput="validateLore(this)">由记忆碎片凝结而成。</textarea>
+                <textarea id="itemLore" rows="5" placeholder="输入背景故事..." oninput="validateLore(this)" required>由记忆碎片凝结而成。</textarea>
             </div>
 
             <div id="attributes-container">
@@ -360,6 +372,7 @@
             </div>
 
             <button class="action-btn" id="copyBtn" onclick="copyConfig()">复制配置代码</button>
+            <div id="requiredMsg" style="text-align:center;margin-top:8px;font-size:0.8rem;color:#ef4444;display:none"></div>
             <div style="text-align: center; margin-top: 10px; font-size: 0.8rem; color: #666;">
                 复制后请发送给管理员进行实装
             </div>
@@ -693,6 +706,55 @@
             }
             
             updatePreview();
+        }
+
+        // 必填项校验（用于禁用复制按钮、提示缺失项）
+        const REQUIRED_FIELDS = [
+            { id: 'playerId', label: '玩家 ID' },
+            { id: 'itemMaterial', label: '装备材质 (材质ID)' },
+            { id: 'itemName', label: '武器名称' },
+            { id: 'itemLore', label: '背景故事' },
+        ];
+
+        function isFieldFilled(el) {
+            if (!el) return false;
+            const v = (el.value ?? '').toString();
+            return v.trim().length > 0;
+        }
+
+        function validateRequiredFields(showMessage = false) {
+            const missing = [];
+            let firstMissingEl = null;
+
+            REQUIRED_FIELDS.forEach(({ id, label }) => {
+                const el = document.getElementById(id);
+                const ok = isFieldFilled(el);
+                if (!ok) {
+                    missing.push(label);
+                    if (!firstMissingEl) firstMissingEl = el;
+                }
+                if (el) el.classList.toggle('field-invalid', !ok);
+            });
+
+            const btn = document.getElementById('copyBtn');
+            if (btn) btn.disabled = missing.length > 0;
+
+            const msg = document.getElementById('requiredMsg');
+            if (msg) {
+                if (showMessage && missing.length > 0) {
+                    msg.style.display = 'block';
+                    msg.innerText = `请先填写必填项：${missing.join('、')}`;
+                } else {
+                    msg.style.display = 'none';
+                    msg.innerText = '';
+                }
+            }
+
+            if (showMessage && firstMissingEl) {
+                try { firstMissingEl.focus(); } catch (e) {}
+            }
+
+            return missing.length === 0;
         }
 
         // 定义属性配置
@@ -1079,12 +1141,16 @@
             loreHtml += parseMcColor('&0.') + '<br>';
 
             document.getElementById('tooltipPreview').innerHTML = loreHtml;
+            // 更新必填项状态（仅禁用按钮/高亮，不弹提示）
+            validateRequiredFields(false);
         }
 
         // 生成 YAML 并复制
         function copyConfig() {
-            const playerId = document.getElementById('playerId').value || 'CustomItem';
-            const material = document.getElementById('itemMaterial').value;
+            if (!validateRequiredFields(true)) return;
+
+            const playerId = document.getElementById('playerId').value.trim();
+            const material = document.getElementById('itemMaterial').value.trim();
             const name = document.getElementById('itemName').value;
             const slot = document.getElementById('itemSlot').value;
             const loreRaw = document.getElementById('itemLore').value;
