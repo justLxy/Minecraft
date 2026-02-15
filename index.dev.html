@@ -460,6 +460,34 @@
             const sanitizedAttrs = {};
             if (signData.a) {
                 for (const [id, val] of Object.entries(signData.a)) {
+                    const allowRange = RANGE_PRICE_ATTR_IDS.has(id);
+                    if (allowRange) {
+                        const parsed = parseAttrInputValue(val, { allowRange: true });
+                        if (!parsed.ok) {
+                            const err = new Error("INVALID_ATTR_VALUE");
+                            err.code = "INVALID_ATTR_VALUE";
+                            throw err;
+                        }
+                        // 签名属性值必须在硬上限以内（区间则两端都要满足）
+                        const minV = Number(parsed.min);
+                        const maxV = Number(parsed.max);
+                        if (
+                            !Number.isFinite(minV) ||
+                            !Number.isFinite(maxV) ||
+                            minV < 0 ||
+                            maxV < 0 ||
+                            minV > ATTR_INPUT_MAX ||
+                            maxV > ATTR_INPUT_MAX
+                        ) {
+                            const err = new Error("INVALID_ATTR_VALUE");
+                            err.code = "INVALID_ATTR_VALUE";
+                            throw err;
+                        }
+                        // 为了在管理员验证时可原样回填输入框：区间属性一律存为字符串
+                        sanitizedAttrs[id] = parsed.kind === 'range' ? parsed.display : formatAttrNumber(parsed.avg);
+                        continue;
+                    }
+
                     const n = Number(val);
                     if (!Number.isFinite(n) || n < 0 || n > ATTR_INPUT_MAX) {
                         const err = new Error("INVALID_ATTR_VALUE");
@@ -597,16 +625,42 @@
             const labelToId = buildLabelToAttrIdMap();
             const attrs = {};
 
-            // 解析属性：形如 “PVP攻击: +2000” / “暴击几率: +10%”
+            // 解析属性：形如 “PVP攻击: +2000” / “暴击几率: +10%” / “伤害: +10-20”
             for (const l of lore) {
-                const m = l.match(/^\s*([^:：]+)\s*[:：]\s*\+?\s*([0-9]+(?:\.[0-9]+)?)\s*(%)?\s*$/);
+                const m = l.match(/^\s*([^:：]+)\s*[:：]\s*\+?\s*([0-9]+(?:\.[0-9]+)?(?:\s*[-~～—－]\s*[0-9]+(?:\.[0-9]+)?)?)\s*(%)?\s*$/);
                 if (!m) continue;
                 const label = m[1].trim();
-                const val = Number(m[2]);
-                if (!Number.isFinite(val)) continue;
+                const rawVal = (m[2] || '').trim();
                 const id = labelToId.get(label);
                 if (!id) continue;
-                attrs[id] = Math.max(0, Math.min(val, ATTR_INPUT_MAX));
+
+                const isPercent = !!m[3];
+                if (isPercent) {
+                    const val = Number(rawVal);
+                    if (!Number.isFinite(val)) continue;
+                    attrs[id] = Math.max(0, Math.min(val, ATTR_INPUT_MAX));
+                    continue;
+                }
+
+                const allowRange = RANGE_PRICE_ATTR_IDS.has(id);
+                const parsed = parseAttrInputValue(rawVal, { allowRange });
+                if (!parsed.ok) continue;
+
+                if (allowRange) {
+                    // 区间属性：保持字符串，便于回填/展示；仍裁剪到硬上限
+                    if (parsed.kind === 'range') {
+                        const a = Math.max(0, Math.min(parsed.min, ATTR_INPUT_MAX));
+                        const b = Math.max(0, Math.min(parsed.max, ATTR_INPUT_MAX));
+                        attrs[id] = `${formatAttrNumber(a)}-${formatAttrNumber(b)}`;
+                    } else {
+                        const n = Math.max(0, Math.min(parsed.avg, ATTR_INPUT_MAX));
+                        attrs[id] = formatAttrNumber(n);
+                    }
+                } else {
+                    // 普通数值属性：保留为数字
+                    const n = Math.max(0, Math.min(parsed.avg, ATTR_INPUT_MAX));
+                    attrs[id] = n;
+                }
             }
 
             // 解析背景故事：在 Lore 中，找到「背景故事」分隔后的 &7&o 行
@@ -877,22 +931,146 @@
         // 属性输入框硬上限（防止超大数字导致 UI 溢出 / 计算异常）
         const ATTR_INPUT_MAX = 100000; // 10w
 
+        // 允许“区间输入”的属性（区间定价：取两端平均值）
+        // 支持格式示例：1000-2000 / 1000~2000 / 1000～2000
+        const RANGE_PRICE_ATTR_IDS = new Set([
+            'ap_attack',            // 伤害
+            'ap_pve_attack',        // PVE攻击
+            'ap_pvp_attack',        // PVP攻击
+            'ap_real_attack',       // 真实攻击
+            'ap_fire_damage',       // 火焰攻击
+            'ap_lightning_damage',  // 雷电攻击
+            'ap_defense',           // 防御
+            'ap_restore',           // 生命恢复
+        ]);
+
+        // 区间“宽度惩罚”倍率：额外费用 = 区间宽度 * costFactor * 该倍率
+        // 例：伤害 0-10000：均值 5000 -> 100 RMB；宽度 10000 -> 200 RMB；合计 ~300 RMB（未触发软上限）
+        const RANGE_WIDTH_PENALTY_MULTIPLIER = 1.0;
+
+        // 平滑递增的“进阶定价”曲线（无阈值、全程递增且越高越贵）
+        // cost = val * costFactor * (1 + (val / curveRef) ^ gamma)
+        // - val 很小时≈线性
+        // - val 接近 curveRef 时≈2倍线性
+        // - val 更大时越来越贵（凸函数）
+        const PROGRESSIVE_PRICE_GAMMA = 1.0;
+        const DEFAULT_CURVE_REF_FLAT = 5000;
+        const DEFAULT_CURVE_REF_PERCENT = 50;
+
+        function progressiveAttrCost(val, costFactor, curveRef, gamma = PROGRESSIVE_PRICE_GAMMA) {
+            const v = Number(val);
+            const k = Number(costFactor);
+            const ref = Number(curveRef);
+            const g = Number(gamma);
+            if (!(Number.isFinite(v) && v > 0)) return 0;
+            if (!(Number.isFinite(k) && k > 0)) return 0;
+            const r = Number.isFinite(ref) && ref > 0 ? ref : DEFAULT_CURVE_REF_FLAT;
+            const gg = Number.isFinite(g) && g > 0 ? g : 1;
+            const x = v / r;
+            return v * k * (1 + Math.pow(x, gg));
+        }
+
+        function formatAttrNumber(n) {
+            if (!Number.isFinite(n)) return '';
+            // 去掉多余的 .0 / 末尾 0
+            return String(n).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+        }
+
+        function parseAttrInputValue(raw, { allowRange = false } = {}) {
+            const s0 = (raw ?? '').toString().trim();
+            if (s0 === '') {
+                return { ok: true, kind: 'empty', avg: 0, min: null, max: null, display: '' };
+            }
+
+            // 允许玩家写 "+1000" 或 "+1000-2000"
+            const s = s0.replace(/^\+/, '').trim();
+
+            // 纯数字
+            const n = Number(s);
+            if (Number.isFinite(n)) {
+                return { ok: true, kind: 'number', avg: n, min: n, max: n, display: formatAttrNumber(n) };
+            }
+
+            if (!allowRange) {
+                return { ok: false, kind: 'invalid', avg: 0, min: null, max: null, display: s0 };
+            }
+
+            // 区间：a-b / a~b / a～b / a—b / a－b（只允许非负数）
+            const m = s.match(/^(\d+(?:\.\d+)?)\s*[-~～—－]\s*(\d+(?:\.\d+)?)$/);
+            if (!m) {
+                return { ok: false, kind: 'invalid', avg: 0, min: null, max: null, display: s0 };
+            }
+
+            const a = Number(m[1]);
+            const b = Number(m[2]);
+            if (!Number.isFinite(a) || !Number.isFinite(b)) {
+                return { ok: false, kind: 'invalid', avg: 0, min: null, max: null, display: s0 };
+            }
+
+            const minV = Math.min(a, b);
+            const maxV = Math.max(a, b);
+            const avg = (minV + maxV) / 2;
+            return {
+                ok: true,
+                kind: 'range',
+                avg,
+                min: minV,
+                max: maxV,
+                display: `${formatAttrNumber(minV)}-${formatAttrNumber(maxV)}`
+            };
+        }
+
         function enforceAttrMax(input) {
             if (!input) return;
             const raw = input.value;
-            if (raw === '') return;
-            const n = Number(raw);
-            if (!Number.isFinite(n)) {
-                input.value = '';
+            const allowRange = RANGE_PRICE_ATTR_IDS.has(input.id);
+
+            if (raw === '') {
+                input.classList.remove('field-invalid');
                 return;
             }
-            if (n > ATTR_INPUT_MAX) input.value = String(ATTR_INPUT_MAX);
-            if (n < 0) input.value = '0';
+
+            const parsed = parseAttrInputValue(raw, { allowRange });
+
+            // 允许区间时：不要在“输入中途”强制清空（否则无法打出 10-20）
+            if (!parsed.ok) {
+                if (allowRange) {
+                    input.classList.add('field-invalid');
+                    return;
+                }
+                // 不允许区间的属性：维持旧逻辑（非数字直接清空）
+                input.value = '';
+                input.classList.remove('field-invalid');
+                return;
+            }
+
+            // 合法输入：清除错误样式
+            input.classList.remove('field-invalid');
+
+            // 统一做上/下限裁剪（区间则裁剪两端）
+            if (parsed.kind === 'number') {
+                let n = parsed.avg;
+                if (!Number.isFinite(n)) return;
+                if (n > ATTR_INPUT_MAX) n = ATTR_INPUT_MAX;
+                if (n < 0) n = 0;
+                input.value = formatAttrNumber(n);
+                return;
+            }
+
+            if (parsed.kind === 'range') {
+                let a = parsed.min;
+                let b = parsed.max;
+                if (!Number.isFinite(a) || !Number.isFinite(b)) return;
+                a = Math.max(0, Math.min(a, ATTR_INPUT_MAX));
+                b = Math.max(0, Math.min(b, ATTR_INPUT_MAX));
+                input.value = `${formatAttrNumber(a)}-${formatAttrNumber(b)}`;
+                return;
+            }
         }
 
         function enforceAllAttrMax() {
             document
-                .querySelectorAll('#attributes-container input[type="number"]')
+                .querySelectorAll('#attributes-container input')
                 .forEach(enforceAttrMax);
         }
 
@@ -943,12 +1121,14 @@
                 attrs.forEach(attr => {
                     const step = attr.isPercent ? 1 : (attr.id.includes('attack') || attr.id.includes('health') ? 10 : 1);
                     const suffix = attr.isPercent ? '%' : '';
-                    const placeholder = attr.isPercent ? '0-100' : '数值';
+                    const allowRange = RANGE_PRICE_ATTR_IDS.has(attr.id);
+                    const inputType = allowRange ? 'text' : 'number';
+                    const placeholder = allowRange ? '如 1000-2000' : (attr.isPercent ? '0-100' : '0');
                     
                     html += `
                     <div class="attr-input-group">
                         <label>${parseMcColor(attr.color + attr.name)}</label>
-                        <input type="number" 
+                        <input type="${inputType}" 
                             id="${attr.id}" 
                             data-is-percent="${attr.isPercent}"
                             data-cost="${attr.costFactor}"
@@ -956,11 +1136,10 @@
                             data-mc-color="${attr.color}"
                             data-label="${attr.label}"
                             data-allowed='${JSON.stringify(attr.allowed)}'
-                            placeholder="0" 
-                            step="${step}"
+                            placeholder="${placeholder}" 
+                            ${allowRange ? `inputmode="decimal"` : `step="${step}"`}
                             oninput="enforceAttrMax(this); updatePreview()"
-                            min="0"
-                            max="${ATTR_INPUT_MAX}">
+                            ${allowRange ? `` : `min="0" max="${ATTR_INPUT_MAX}"`}>
                         <span id="price-${attr.id}" class="attr-price"></span>
                     </div>`;
                 });
@@ -1051,21 +1230,28 @@
                 const container = input.closest('.attr-input-group');
                 if (container && container.style.display === 'none') return;
 
-                let val = parseFloat(input.value);
+                const allowRange = RANGE_PRICE_ATTR_IDS.has(input.id);
+                const parsed = parseAttrInputValue(input.value, { allowRange });
+                let val = parsed.ok ? Number(parsed.avg) : 0;
                 let cost = 0;
                 
                 if (val && val > 0) {
                     const costFactor = parseFloat(input.dataset.cost);
-                    const limit = parseFloat(input.dataset.limit);
+                    const curveRef = parseFloat(input.dataset.limit);
+                    const isPercent = input.dataset.isPercent === 'true';
+                    const fallbackRef = isPercent ? DEFAULT_CURVE_REF_PERCENT : DEFAULT_CURVE_REF_FLAT;
                     
-                    // 核心定价算法
-                    // 1. 基础线性价格
-                    cost = val * costFactor;
+                    // 核心定价算法：平滑递增（无“超过 limit 才惩罚”的分段）
+                    cost = progressiveAttrCost(val, costFactor, Number.isFinite(curveRef) && curveRef > 0 ? curveRef : fallbackRef);
 
-                    // 2. 惩罚性指数增长
-                    if (val > limit) {
-                        const excessRatio = (val - limit) / limit;
-                        cost += cost * excessRatio * 2; 
+                    // 区间宽度惩罚（只对“允许区间”的属性生效；不参与进阶曲线计算）
+                    if (parsed.ok && parsed.kind === 'range') {
+                        const minV = Number(parsed.min);
+                        const maxV = Number(parsed.max);
+                        if (Number.isFinite(minV) && Number.isFinite(maxV) && maxV > minV) {
+                            const width = maxV - minV;
+                            cost += width * costFactor * RANGE_WIDTH_PENALTY_MULTIPLIER;
+                        }
                     }
                     
                     // 应用部位倍率
@@ -1183,22 +1369,27 @@
             
             // 寻找伤害
             const dmgInput = inputs.find(i => i.id === 'ap_attack');
-            if (dmgInput && dmgInput.value > 0) {
-                 loreHtml += parseMcColor(`&b&l伤害:&2&l +${dmgInput.value}`) + '<br>';
+            if (dmgInput) {
+                const dmgParsed = parseAttrInputValue(dmgInput.value, { allowRange: true });
+                if (dmgParsed.ok && dmgParsed.avg > 0) {
+                    loreHtml += parseMcColor(`&b&l伤害:&2&l +${(dmgInput.value || '').trim()}`) + '<br>';
+                }
             }
 
             loreHtml += parseMcColor('&7&l&m----------&r&6&l武器属性&7&l&m---------') + '<br>';
             
             inputs.forEach(input => {
-                const val = parseFloat(input.value);
-                if (val > 0 && input.id !== 'ap_attack') { // 伤害已经显示过了
+                const allowRange = RANGE_PRICE_ATTR_IDS.has(input.id);
+                const parsed = parseAttrInputValue(input.value, { allowRange });
+                if (parsed.ok && parsed.avg > 0 && input.id !== 'ap_attack') { // 伤害已经显示过了
                     const label = input.dataset.label;
                     const color = input.dataset.mcColor;
                     const isPercent = input.dataset.isPercent === 'true';
                     const suffix = isPercent ? '%' : '';
+                    const displayVal = allowRange ? (input.value || '').trim() : parsed.display;
                     
                     // 格式：&f&l属性名:&2&l +数值%
-                    loreHtml += parseMcColor(`${color}&l${label}:&2&l +${val}${suffix}`) + '<br>';
+                    loreHtml += parseMcColor(`${color}&l${label}:&2&l +${displayVal}${suffix}`) + '<br>';
                     hasAttr = true;
                 }
             });
@@ -1248,11 +1439,13 @@
             const activeAttrs = {};
             
             inputs.forEach(input => {
-                const val = parseFloat(input.value);
+                const allowRange = RANGE_PRICE_ATTR_IDS.has(input.id);
+                const parsed = parseAttrInputValue(input.value, { allowRange });
                 const container = input.closest('.attr-input-group');
                 // 只有非隐藏且有值的属性才会被记录
-                if (val > 0 && container.style.display !== 'none') {
-                    activeAttrs[input.id] = val;
+                if (container && container.style.display !== 'none' && parsed.ok && parsed.avg > 0) {
+                    // 区间属性存字符串（便于回填展示）；普通属性存数字
+                    activeAttrs[input.id] = allowRange ? (input.value || '').trim() : parsed.avg;
                 }
             });
 
