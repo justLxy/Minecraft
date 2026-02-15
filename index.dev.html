@@ -380,46 +380,12 @@
         let upgradeMode = false;
         let originalPrice = 0;
 
-        // 统一的签名提取 + 校验（升级导入 / 管理员验证台共用）
+        // 签名提取 + 校验（仅用于“玩家下单/管理员验证”，升级导入不使用签名）
         function extractSignatureBase64(text) {
             if (!text) return null;
-            // 兼容：有些平台复制会丢掉开头的 "#"
-            const patterns = [
-                /(?:^|\n)\s*#?\s*校验签名\s*[:：]\s*([A-Za-z0-9+/=]+)\s*(?:\n|$)/,
-                /校验签名\s*[:：]\s*([A-Za-z0-9+/=]+)/,
-            ];
-            for (const re of patterns) {
-                const m = text.match(re);
-                if (m && m[1]) return m[1];
-            }
-            return null;
-        }
-
-        function extractOrderInfo(yaml) {
-            if (!yaml) return { mode: 'unknown' };
-
-            // 升级订单：补价 + 原价
-            // 示例：# 玩家升级订单 - 补价: 1 RMB (原价: 50)
-            const up = yaml.match(/玩家升级订单\s*-\s*补价\s*[:：]\s*(\d+)\s*RMB\s*\(原价\s*[:：]\s*(\d+)\s*\)/);
-            if (up) {
-                return {
-                    mode: 'upgrade',
-                    payPrice: Number(up[1]),
-                    originalPrice: Number(up[2])
-                };
-            }
-
-            // 定制订单：价格
-            // 示例：# 玩家定制订单 - 价格: 51 RMB
-            const cu = yaml.match(/玩家定制订单\s*-\s*价格\s*[:：]\s*(\d+)\s*RMB/);
-            if (cu) {
-                return {
-                    mode: 'custom',
-                    payPrice: Number(cu[1])
-                };
-            }
-
-            return { mode: 'unknown' };
+            // 仅支持当前格式（不兼容旧格式）
+            const m = String(text).match(/(?:^|\n)\s*#\s*校验签名\s*[:：]\s*([A-Za-z0-9+/=]+)\s*(?:\n|$)/);
+            return m && m[1] ? m[1] : null;
         }
 
         function decodeAndValidateSignData(yaml) {
@@ -488,10 +454,30 @@
                 }
             }
 
-            // 可选字段（新版本签名会写入）：m=模式, op=原价, fp=当前总价
-            const mode = signData.m === 'upgrade' || signData.m === 'custom' ? signData.m : undefined;
-            const opNum = signData.op == null ? undefined : Number(signData.op);
-            const fpNum = signData.fp == null ? undefined : Number(signData.fp);
+            // 仅支持当前签名结构（不兼容旧结构）
+            const mode = signData.m;
+            if (mode !== 'custom' && mode !== 'upgrade') {
+                const err = new Error("INVALID_MODE");
+                err.code = "INVALID_MODE";
+                throw err;
+            }
+
+            const fpNum = Number(signData.fp);
+            if (!Number.isFinite(fpNum) || fpNum < 0) {
+                const err = new Error("INVALID_FULL_PRICE");
+                err.code = "INVALID_FULL_PRICE";
+                throw err;
+            }
+
+            let opNum = undefined;
+            if (mode === 'upgrade') {
+                opNum = Number(signData.op);
+                if (!Number.isFinite(opNum) || opNum < 0) {
+                    const err = new Error("INVALID_ORIGINAL_PRICE");
+                    err.code = "INVALID_ORIGINAL_PRICE";
+                    throw err;
+                }
+            }
 
             return { ...signData, m: mode, op: opNum, fp: fpNum, p: pNum, a: sanitizedAttrs };
         }
@@ -606,28 +592,16 @@
             }
 
             try {
-                // 支持两种导入：
-                // 1) 无签名 MythicMobs 配置：从 Lore 解析 slot/属性，并计算“原始总价”
-                // 2) 带签名配置：优先用签名的 slot/属性
-
-                let slot = null;
-                let attrs = {};
-                let note = "";
-
-                const b64 = extractSignatureBase64(yaml);
-                if (b64) {
-                    const signData = decodeAndValidateSignData(yaml);
-                    slot = signData.s;
-                    attrs = signData.a || {};
-                    // 若是升级订单签名，这里的 p 可能是补价，不适合作为“升级基底”
-                    if (signData.m === 'upgrade') {
-                        note = "<br><span style='color:#a3a3a3;font-size:0.8rem'>(提示：你粘贴的是“升级订单(补价)”配置。用于升级基底时更推荐粘贴 MythicMobs 里那份无签名的物品配置)</span>";
-                    }
-                } else {
-                    const parsed = parseUnsignedConfigForUpgrade(yaml);
-                    slot = parsed.slot;
-                    attrs = parsed.attrs || {};
+                // 仅支持“无签名 MythicMobs 配置”导入（不兼容旧流程）
+                if (extractSignatureBase64(yaml)) {
+                    msgDiv.innerHTML =
+                        "<span style='color: #ef4444;'>导入失败：升级导入只接受 MythicMobs 物品配置（无签名）。请粘贴你实际放进 MythicMobs 的那段配置（包含 Lore 列表），不要粘贴玩家订单。</span>";
+                    return;
                 }
+
+                const parsed = parseUnsignedConfigForUpgrade(yaml);
+                const slot = parsed.slot;
+                const attrs = parsed.attrs || {};
 
                 const allowedSlots = ['主手', '副手', '头盔', '胸甲', '护腿', '靴子'];
                 if (!slot || !allowedSlots.includes(slot)) {
@@ -663,7 +637,7 @@
                 originalPrice = baseFullPrice;
 
                 msgDiv.innerHTML =
-                    `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 加载成功！原始总价: ${originalPrice} RMB。请在下方修改属性，系统将自动计算补差价。</span>${note}`;
+                    `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 加载成功！原始总价: ${originalPrice} RMB。请在下方修改属性，系统将自动计算补差价。</span>`;
 
                 updatePreview();
 
@@ -1169,10 +1143,7 @@
             });
             loreList.push('&0.');
 
-            // 生成校验签名
-            // 签名包含：价格 + 所有属性值 + 盐值
-            // 这样即使玩家改了 YAML 里的价格注释，或者改了属性值，签名都会对不上
-            // 注意：升级模式下 price 是“补价”，不是当前总价；这里额外记录原价/总价供管理员验证。
+            // 计算当前总价（忽略 upgradeMode，避免得到补价）
             const prevUpgradeMode = upgradeMode;
             const prevOriginalPrice = originalPrice;
             upgradeMode = false;
@@ -1180,14 +1151,18 @@
             upgradeMode = prevUpgradeMode;
             originalPrice = prevOriginalPrice;
 
+            // 当前应付金额：定制=总价，升级=补差价
+            const payPrice = upgradeMode ? Math.max(fullPriceNow - originalPrice, 0) : fullPriceNow;
+
+            // 生成校验签名（仅用于管理员验证；不做旧格式兼容）
             const signData = {
-                p: price,
+                m: upgradeMode ? 'upgrade' : 'custom',
+                p: String(payPrice),
+                fp: fullPriceNow,
+                op: upgradeMode ? originalPrice : undefined,
                 s: slot,
                 a: activeAttrs,
                 t: Date.now(),
-                m: upgradeMode ? 'upgrade' : 'custom',
-                op: upgradeMode ? originalPrice : undefined,
-                fp: fullPriceNow,
                 salt: SECRET_SALT
             };
             // 简单的 Base64 编码作为签名 (防小白修改)
@@ -1196,8 +1171,8 @@
 
             // 格式化 YAML
             let yamlHeader = upgradeMode 
-                ? `# 玩家升级订单 - 补价: ${price} RMB (原价: ${originalPrice})\n`
-                : `# 玩家定制订单 - 价格: ${price} RMB\n`;
+                ? `# 玩家升级订单 - 补价: ${payPrice} RMB (原价: ${originalPrice})\n`
+                : `# 玩家定制订单 - 价格: ${payPrice} RMB\n`;
             
             let yaml = yamlHeader;
             yaml += `# 校验签名: ${signature}\n`; // 关键行
@@ -1239,7 +1214,6 @@
 
             try {
                 const signData = decodeAndValidateSignData(yaml);
-                const orderInfo = extractOrderInfo(yaml);
 
                 // 恢复数据到界面
                 // 1. 恢复部位 (必须先恢复部位，否则 updateVisibleAttributes 会隐藏属性导致无法赋值)
@@ -1269,16 +1243,10 @@
 
                 // 5. 根据订单类型验证金额
                 const payFromSign = Number(signData.p);
-                const mode = signData.m || orderInfo.mode || 'custom';
+                const mode = signData.m;
 
                 if (mode === 'upgrade') {
-                    const op = Number.isFinite(signData.op) ? signData.op : orderInfo.originalPrice;
-                    if (!Number.isFinite(op)) {
-                        resultDiv.innerHTML = `<span style='color: #fbbf24;'>警告：检测到升级订单，但缺少原价信息，无法严格验证补价。</span><br>签名应付: ${payFromSign} | 当前总价: ${fullPriceNow}`;
-                        updatePreview();
-                        return;
-                    }
-
+                    const op = Number(signData.op);
                     const expectedPay = Math.max(fullPriceNow - op, 0);
                     if (expectedPay == payFromSign) {
                         resultDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 验证通过！(升级订单)</span><br>原价: ${op} | 当前总价: ${fullPriceNow} | 应补: ${expectedPay}`;
