@@ -67,6 +67,30 @@ if (scripts.length === 0) {
 const obfuscatedByIdx = new Map();
 const tmpFiles = [];
 
+const ALLOWED_PRESETS = new Set([
+  "default",
+  "low-obfuscation",
+  "medium-obfuscation",
+  "high-obfuscation",
+]);
+
+function readArgValue(flag) {
+  const idx = process.argv.indexOf(flag);
+  if (idx === -1) return null;
+  return process.argv[idx + 1] || null;
+}
+
+const presetArg = readArgValue("--preset");
+const highFlag = process.argv.includes("--high");
+const preset = presetArg || (highFlag ? "high-obfuscation" : "medium-obfuscation");
+if (!ALLOWED_PRESETS.has(preset)) {
+  die(
+    `Invalid --preset "${preset}". Allowed: ${Array.from(ALLOWED_PRESETS).join(
+      ", "
+    )}`
+  );
+}
+
 try {
   for (let i = 0; i < scripts.length; i += 1) {
     const inJs = tmpPath(`in_${i}.js`);
@@ -83,9 +107,18 @@ try {
       "--target",
       "browser",
       "--options-preset",
-      "medium-obfuscation",
+      preset,
       "--compact",
       "true",
+      // IMPORTANT: this project uses inline HTML event handlers like onclick="toggleUpgradePanel()"
+      // so we must NOT rename globals, otherwise those strings won't match renamed function names.
+      "--rename-globals",
+      "false",
+      // Avoid "anti-debug" options that may freeze DevTools or add runtime brittleness.
+      "--debug-protection",
+      "false",
+      "--self-defending",
+      "false",
       "--string-array-encoding",
       "base64",
     ]);

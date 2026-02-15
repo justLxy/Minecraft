@@ -43,3 +43,9 @@
 ```bash
 node tools/build-obfuscate.cjs
 ```
+
+- 最强混淆（更慢、也更可能遇到兼容问题）：
+
+```bash
+node tools/build-obfuscate.cjs --high
+```
