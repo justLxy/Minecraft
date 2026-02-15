@@ -255,6 +255,19 @@
         <!-- 左侧：配置面板 -->
         <div class="config-panel">
             
+            <!-- 升级导入区 -->
+            <div style="background: #222; border: 1px dashed #555; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleUpgradePanel()">
+                    <span style="color: var(--accent-color); font-weight: bold; display: flex; align-items: center;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg> 老客户升级 / 导入配置</span>
+                    <span id="upgradeToggleIcon">▼</span>
+                </div>
+                <div id="upgradeInputPanel" style="display: none; margin-top: 10px;">
+                    <textarea id="upgradeArea" rows="3" placeholder="请在此粘贴您之前的武器配置代码..." style="width: 100%; background: #111; color: #aaa; border: 1px solid #444; padding: 5px; font-size: 0.8rem;"></textarea>
+                    <button class="action-btn" style="padding: 8px; font-size: 0.9rem; margin-top: 5px;" onclick="loadForUpgrade()">加载旧配置并升级</button>
+                    <div id="upgradeMsg" style="font-size: 0.8rem; margin-top: 5px;"></div>
+                </div>
+            </div>
+            
             <div class="section-title">基础信息</div>
             <div class="form-row">
                 <div class="form-group">
@@ -344,7 +357,7 @@
                 <!-- 预览内容 -->
             </div>
 
-            <button class="action-btn" onclick="copyConfig()">复制配置代码</button>
+            <button class="action-btn" id="copyBtn" onclick="copyConfig()">复制配置代码</button>
             <div style="text-align: center; margin-top: 10px; font-size: 0.8rem; color: #666;">
                 复制后请发送给管理员进行实装
             </div>
@@ -359,7 +372,75 @@
     </div>
 
     <script>
-        const SECRET_SALT = "记忆代理人";
+        const SECRET_SALT = "MemoryAgent_Weapon_2026";
+
+        // 升级模式状态
+        let upgradeMode = false;
+        let originalPrice = 0;
+
+        function toggleUpgradePanel() {
+            const panel = document.getElementById('upgradeInputPanel');
+            const icon = document.getElementById('upgradeToggleIcon');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                icon.innerText = '▲';
+            } else {
+                panel.style.display = 'none';
+                icon.innerText = '▼';
+            }
+        }
+
+        function loadForUpgrade() {
+            const yaml = document.getElementById('upgradeArea').value;
+            const msgDiv = document.getElementById('upgradeMsg');
+            
+            if (!yaml) {
+                msgDiv.innerHTML = "<span style='color: #ef4444;'>请先粘贴配置代码！</span>";
+                return;
+            }
+
+            const signMatch = yaml.match(/# 校验签名: (.+)/);
+            if (!signMatch) {
+                msgDiv.innerHTML = "<span style='color: #ef4444;'>无效的配置：找不到签名，无法验证原价！</span>";
+                return;
+            }
+
+            try {
+                const signData = JSON.parse(decodeURIComponent(escape(atob(signMatch[1]))));
+                
+                if (signData.salt !== SECRET_SALT) {
+                    throw new Error("Invalid Salt");
+                }
+
+                // 1. 恢复数据
+                document.getElementById('itemSlot').value = signData.s;
+                updateVisibleAttributes(); 
+
+                // 清空当前
+                document.querySelectorAll('#attributes-container input').forEach(i => i.value = '');
+
+                // 填入旧数据
+                if (signData.a) {
+                    for (const [id, val] of Object.entries(signData.a)) {
+                        const input = document.getElementById(id);
+                        if (input) input.value = val;
+                    }
+                }
+
+                // 2. 开启升级模式
+                upgradeMode = true;
+                originalPrice = parseInt(signData.p);
+                
+                msgDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 加载成功！原价: ${originalPrice} RMB。请在下方修改属性，差价将自动计算。</span>`;
+                
+                // 3. 触发更新
+                updatePreview();
+
+            } catch (e) {
+                console.error(e);
+                msgDiv.innerHTML = "<span style='color: #ef4444;'>配置解析失败，可能已被篡改！</span>";
+            }
+        }
 
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('admin') === 'true') {
@@ -606,7 +687,16 @@
             });
 
             // 最低消费 50
-            return Math.ceil(Math.max(totalPrice, 50));
+            let finalPrice = Math.ceil(Math.max(totalPrice, 50));
+
+            if (upgradeMode) {
+                // 升级模式：计算差价
+                let diff = finalPrice - originalPrice;
+                // 至少显示 0，或者可以设置一个最小升级手续费
+                return Math.max(diff, 0); 
+            }
+
+            return finalPrice;
         }
 
         // Minecraft 颜色代码解析 (修复版：正确处理样式继承和重置)
@@ -800,7 +890,11 @@
             const signature = btoa(unescape(encodeURIComponent(JSON.stringify(signData))));
 
             // 格式化 YAML
-            let yaml = `# 玩家定制订单 - 价格: ${price} RMB\n`;
+            let yamlHeader = upgradeMode 
+                ? `# 玩家升级订单 - 补价: ${price} RMB (原价: ${originalPrice})\n`
+                : `# 玩家定制订单 - 价格: ${price} RMB\n`;
+            
+            let yaml = yamlHeader;
             yaml += `# 校验签名: ${signature}\n`; // 关键行
             yaml += `${playerId}_Custom:\n`;
             yaml += `  Id: ${material}\n`;
@@ -816,7 +910,7 @@
 
             // 复制到剪贴板
             navigator.clipboard.writeText(yaml).then(() => {
-                const btn = document.querySelector('.action-btn');
+                const btn = document.getElementById('copyBtn');
                 const originalText = btn.innerText;
                 btn.innerText = "已复制到剪贴板！";
                 btn.style.background = "#22c55e";
@@ -841,8 +935,7 @@
             // 提取签名 (Base64)
             const signMatch = yaml.match(/# 校验签名: (.+)/);
             if (!signMatch) {
-                resultDiv.innerText = "❌ 错误：未找到校验签名，可能是伪造或旧版本配置！";
-                resultDiv.style.color = "#ef4444";
+                resultDiv.innerHTML = "<span style='color: #ef4444;'><svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' style='vertical-align: text-bottom; margin-right: 4px;'><line x1='18' y1='6' x2='6' y2='18'></line><line x1='6' y1='6' x2='18' y2='18'></line></svg> 错误：未找到校验签名，可能是伪造或旧版本配置！</span>";
                 return;
             }
 
@@ -880,19 +973,16 @@
                 // signData.p 是玩家生成配置时的价格
                 // currentPrice 是管理员现在计算出的价格
                 if (currentPrice == signData.p) {
-                    resultDiv.innerHTML = `✅ 验证通过！<br>原始价格: ${signData.p} | 当前计算: ${currentPrice}<br>配置已导入界面，您可以检查属性是否正确。`;
-                    resultDiv.style.color = "#22c55e";
+                    resultDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 验证通过！</span><br>原始价格: ${signData.p} | 当前计算: ${currentPrice}<br>配置已导入界面，您可以检查属性是否正确。`;
                     updatePreview(); // 更新预览
                 } else {
-                    resultDiv.innerHTML = `⚠️ 警告：价格不匹配！<br>签名价格: ${signData.p} | 实际应付: ${currentPrice}<br>可能原因：玩家修改了属性、P图改了价格，或者您的计费规则已更新。`;
-                    resultDiv.style.color = "#fbbf24";
+                    resultDiv.innerHTML = `<span style='color: #fbbf24;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> 警告：价格不匹配！</span><br>签名价格: ${signData.p} | 实际应付: ${currentPrice}<br>可能原因：玩家修改了属性、P图改了价格，或者您的计费规则已更新。`;
                     updatePreview();
                 }
 
             } catch (e) {
                 console.error(e);
-                resultDiv.innerText = "❌ 错误：签名解析失败，配置可能已损坏！";
-                resultDiv.style.color = "#ef4444";
+                resultDiv.innerHTML = "<span style='color: #ef4444;'><svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' style='vertical-align: text-bottom; margin-right: 4px;'><line x1='18' y1='6' x2='6' y2='18'></line><line x1='6' y1='6' x2='18' y2='18'></line></svg> 错误：签名解析失败，配置可能已损坏！</span>";
             }
         }
 
