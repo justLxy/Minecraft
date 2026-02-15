@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>记忆代理人 - 传说武器锻造台</title>
+    <title>记忆代理人 - 装备锻造台</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Press+Start+2P&display=swap" rel="stylesheet">
@@ -12,7 +12,7 @@
             --bg-color: #1a1a1a;
             --panel-bg: #2b2b2b;
             --border-color: #555;
-            --accent-color: #a855f7; /* 恢复紫色主题 */
+            --accent-color: #a855f7;
             --gold-color: #fbbf24;
             --text-color: #e5e5e5;
             --mc-tooltip-bg: rgba(16, 0, 16, 0.95);
@@ -69,7 +69,7 @@
 
         .section-title {
             font-size: 1.2rem;
-            color: var(--gold-color); /* 恢复金色 */
+            color: var(--gold-color);
             border-bottom: 2px solid var(--border-color);
             padding-bottom: 10px;
             margin-top: 20px;
@@ -171,6 +171,8 @@
             color: var(--gold-color); 
             text-shadow: 0 2px 4px rgba(0,0,0,0.5);
             font-family: 'Press Start 2P', cursive;
+            display: inline-block;
+            white-space: nowrap;
         }
         .currency { 
             font-size: 1.2rem; 
@@ -190,7 +192,7 @@
             box-shadow: 0 5px 15px rgba(0,0,0,0.5);
             min-height: 300px;
             position: relative;
-            font-size: 18px; /* 像素字体大一点才清晰 */
+            font-size: 18px;
             letter-spacing: 1px;
         }
 
@@ -271,11 +273,11 @@
             <div class="section-title">基础信息</div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>玩家 ID (绑定者)</label>
+                    <label>玩家 ID</label>
                     <input type="text" id="playerId" placeholder="输入你的游戏ID" oninput="updatePreview()">
                 </div>
                 <div class="form-group">
-                    <label>武器类型 (材质ID)</label>
+                    <label>装备类型 (材质ID)</label>
                     <input type="text" id="itemMaterial" list="material_list" placeholder="输入材质英文名 (如 DIAMOND_SWORD)" oninput="updatePreview()" value="WOODEN_SWORD">
                     <datalist id="material_list">
                         <!-- 武器 -->
@@ -317,7 +319,7 @@
             </div>
             <div class="form-row">
                 <div class="form-group">
-                    <label>武器名称 (最多10字)</label>
+                    <label>武器名称</label>
                     <input type="text" id="itemName" value="&c定制武器" maxlength="16" placeholder="最多10字 (含颜色代码限制16字符)" oninput="updatePreview()">
                 </div>
                 <div class="form-group">
@@ -553,6 +555,66 @@
             ]
         };
 
+        // 属性输入框硬上限（防止超大数字导致 UI 溢出 / 计算异常）
+        const ATTR_INPUT_MAX = 100000; // 10w
+
+        function enforceAttrMax(input) {
+            if (!input) return;
+            const raw = input.value;
+            if (raw === '') return;
+            const n = Number(raw);
+            if (!Number.isFinite(n)) {
+                input.value = '';
+                return;
+            }
+            if (n > ATTR_INPUT_MAX) input.value = String(ATTR_INPUT_MAX);
+            if (n < 0) input.value = '0';
+        }
+
+        function enforceAllAttrMax() {
+            document
+                .querySelectorAll('#attributes-container input[type="number"]')
+                .forEach(enforceAttrMax);
+        }
+
+        // 价格数字自适应（防止过长溢出价格卡片）
+        let TOTAL_PRICE_BASE_FONT_PX = null;
+        function adjustTotalPriceFontSize() {
+            const priceEl = document.getElementById('totalPrice');
+            if (!priceEl) return;
+
+            const container = priceEl.closest('.price-container');
+            if (!container) return;
+
+            const currencyEl = container.querySelector('.currency');
+            if (!currencyEl) return;
+
+            if (TOTAL_PRICE_BASE_FONT_PX == null) {
+                const base = parseFloat(getComputedStyle(priceEl).fontSize);
+                TOTAL_PRICE_BASE_FONT_PX = Number.isFinite(base) && base > 0 ? base : 40;
+            }
+
+            // 先重置为基准字号再测量
+            priceEl.style.fontSize = `${TOTAL_PRICE_BASE_FONT_PX}px`;
+
+            const containerWidth = container.clientWidth;
+            const currencyWidth = currencyEl.getBoundingClientRect().width;
+            const gapStr = getComputedStyle(container).columnGap || getComputedStyle(container).gap || '0';
+            const gap = parseFloat(gapStr) || 0;
+
+            const available = containerWidth - currencyWidth - gap - 2; // 预留一点缓冲
+            if (!(available > 0)) return;
+
+            const priceWidth = priceEl.scrollWidth;
+            if (priceWidth <= available) return; // 够放就不缩
+
+            const scale = available / priceWidth;
+            const clamped = Math.max(0.2, Math.min(1, scale));
+            priceEl.style.fontSize = `${TOTAL_PRICE_BASE_FONT_PX * clamped}px`;
+        }
+
+        window.addEventListener('resize', () => requestAnimationFrame(adjustTotalPriceFontSize));
+
         // 初始化页面
         function init() {
             const container = document.getElementById('attributes-container');
@@ -577,8 +639,9 @@
                             data-allowed='${JSON.stringify(attr.allowed)}'
                             placeholder="0" 
                             step="${step}"
-                            oninput="updatePreview()"
-                            min="0">
+                            oninput="enforceAttrMax(this); updatePreview()"
+                            min="0"
+                            max="${ATTR_INPUT_MAX}">
                         <span id="price-${attr.id}" class="attr-price"></span>
                     </div>`;
                 });
@@ -635,6 +698,7 @@
 
         // 价格计算逻辑
         function calculatePrice() {
+            enforceAllAttrMax();
             let totalPrice = 0; // 基础价格从0开始计算
             const slot = document.getElementById('itemSlot').value;
             
@@ -756,6 +820,7 @@
         function updatePreview() {
             const price = calculatePrice();
             document.getElementById('totalPrice').innerText = price;
+            requestAnimationFrame(adjustTotalPriceFontSize);
 
             const name = document.getElementById('itemName').value || '未命名武器';
             const slot = document.getElementById('itemSlot').value;
