@@ -248,7 +248,7 @@
 </head>
 <body>
 
-    <h1>记忆代理人</h1>
+    <h1>记忆代理人 x 落花星雨</h1>
     <div class="subtitle">专属武器定制终端 - 打造属于你的传说</div>
 
     <div class="container">
@@ -448,9 +448,9 @@
             ],
             defense: [
                 { id: 'ap_armor', name: '护甲值', color: '&a', costFactor: 5, isPercent: false, limit: 100, label: '护甲值', allowed: ['armor'] },
-                { id: 'ap_defense', name: '防御', color: '&a', costFactor: 10, isPercent: false, limit: 100, label: '防御', allowed: ['armor'] },
-                { id: 'ap_pvp_defense', name: 'PVP减伤', color: '&a', costFactor: 20, isPercent: false, limit: 100, label: 'PVP减伤', allowed: ['armor'] },
-                { id: 'ap_pve_defense', name: 'PVE减伤', color: '&a', costFactor: 10, isPercent: false, limit: 200, label: 'PVE减伤', allowed: ['armor'] },
+                { id: 'ap_defense', name: '防御', color: '&a', costFactor: 10, isPercent: false, limit: 50, label: '防御', allowed: ['armor'] },
+                { id: 'ap_pvp_defense', name: 'PVP减伤', color: '&a', costFactor: 0.02, isPercent: false, limit: 5000, label: 'PVP减伤', allowed: ['armor'] },
+                { id: 'ap_pve_defense', name: 'PVE减伤', color: '&a', costFactor: 0.02, isPercent: false, limit: 5000, label: 'PVE减伤', allowed: ['armor'] },
                 { id: 'ap_crit_damage_resist', name: '暴伤抵抗', color: '&c', costFactor: 1, isPercent: true, limit: 50, label: '暴伤抵抗', allowed: ['armor'] },
                 { id: 'ap_crit_resist', name: '暴击抵抗', color: '&c', costFactor: 1, isPercent: true, limit: 50, label: '暴击抵抗', allowed: ['armor'] },
                 { id: 'ap_crit_dodge', name: '暴击闪避', color: '&c', costFactor: 1, isPercent: true, limit: 50, label: '暴击闪避', allowed: ['armor'] },
@@ -468,9 +468,8 @@
                 { id: 'ap_restore_ratio', name: '百分比恢复', color: '&a', costFactor: 10, isPercent: true, limit: 10, label: '百分比恢复', allowed: ['armor'] },
                 { id: 'ap_accumulate_addition', name: '蓄力加成', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '蓄力加成', allowed: ['weapon'] },
                 { id: 'ap_accumulate_disturb', name: '蓄力干扰', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '蓄力干扰', allowed: ['weapon'] },
-                { id: 'ap_moving', name: '移速加成', color: '&6', costFactor: 5, isPercent: true, limit: 20, label: '移速加成', allowed: ['all'] },
-                { id: 'ap_exp_addition', name: '经验加成', color: '&6', costFactor: 0.5, isPercent: true, limit: 100, label: '经验加成', allowed: ['all'] },
-                { id: 'ap_summon_intensity', name: '召唤强度', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '召唤强度', allowed: ['weapon'] },
+                { id: 'ap_moving', name: '移速加成', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '移速加成', allowed: ['all'] },
+                { id: 'ap_exp_addition', name: '经验加成', color: '&6', costFactor: 1, isPercent: true, limit: 100, label: '经验加成', allowed: ['all'] },
                 { id: 'ap_shoot_speed', name: '弓箭射速', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '弓箭射速', allowed: ['weapon'] },
                 { id: 'ap_shoot_spread', name: '箭术精准', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '箭术精准', allowed: ['weapon'] },
                 { id: 'ap_shoot_through', name: '箭术穿透率', color: '&3', costFactor: 2, isPercent: true, limit: 50, label: '箭术穿透率', allowed: ['weapon'] },
@@ -509,9 +508,9 @@
                 return html;
             };
 
-            container.innerHTML += createSection('攻击属性 (Attack)', attributesDB.attack);
-            container.innerHTML += createSection('防御属性 (Defense)', attributesDB.defense);
-            container.innerHTML += createSection('特殊属性 (Special)', attributesDB.other);
+            container.innerHTML += createSection('攻击属性 (仅限武器)', attributesDB.attack);
+            container.innerHTML += createSection('防御属性 (仅限装备栏)', attributesDB.defense);
+            container.innerHTML += createSection('特殊属性 (部分通用)', attributesDB.other);
 
             updateVisibleAttributes(); // 初始化时更新可见性
             updatePreview();
