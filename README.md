@@ -33,3 +33,11 @@
 
 ---
 *(开发备注：`index.html` 为混淆后的发布版本，`index.dev.html` 为未混淆的源码备份)*
+
+## 一键生成混淆/发布版
+
+> 目标：把 `index.dev.html` 生成新的发布文件 `index.html`（压缩 + JS/CSS 最小化）。
+
+```bash
+npx --yes html-minifier-terser --collapse-whitespace --remove-comments --minify-css true --minify-js true -o index.html index.dev.html
+```
