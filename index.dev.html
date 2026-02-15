@@ -554,8 +554,34 @@
             return map;
         }
 
+        function parseYamlHeader(yaml) {
+            const out = { playerId: '', material: '', displayName: '' };
+            const lines = String(yaml || '').split(/\r?\n/);
+            for (const line of lines) {
+                const keyMatch = line.match(/^\s*([A-Za-z0-9_]+)_Custom\s*:\s*$/);
+                if (keyMatch) {
+                    out.playerId = keyMatch[1].trim();
+                    continue;
+                }
+                const idMatch = line.match(/^\s*Id\s*:\s*(.+)$/);
+                if (idMatch) {
+                    out.material = idMatch[1].trim();
+                    continue;
+                }
+                const dispMatch = line.match(/^\s*Display\s*:\s*['"](.+)['"]\s*$/);
+                if (dispMatch) {
+                    let d = dispMatch[1];
+                    d = d.replace(/(?:§c|&c)\[右键绑定\]\s*$/i, '').trim();
+                    out.displayName = d;
+                }
+            }
+            return out;
+        }
+
         function parseUnsignedConfigForUpgrade(yaml) {
+            const header = parseYamlHeader(yaml);
             const loreLinesRaw = parseLoreLinesFromYaml(yaml);
+            const loreWithCodes = loreLinesRaw;
             const lore = loreLinesRaw.map(stripMcFormatCodes).filter(Boolean);
 
             // 解析装备类型
@@ -583,7 +609,32 @@
                 attrs[id] = Math.max(0, Math.min(val, ATTR_INPUT_MAX));
             }
 
-            return { slot, attrs };
+            // 解析背景故事：在 Lore 中，找到「背景故事」分隔后的 &7&o 行
+            let loreText = '';
+            let inLoreStory = false;
+            const storyLines = [];
+            for (const raw of loreWithCodes) {
+                const stripped = stripMcFormatCodes(raw);
+                if (/背景故事/.test(stripped)) {
+                    inLoreStory = true;
+                    continue;
+                }
+                if (inLoreStory) {
+                    if (stripped === '' || /^\.+$/.test(stripped)) continue;
+                    if (/^[-]+/.test(stripped) || /武器描述|武器属性/.test(stripped)) break;
+                    storyLines.push(stripped);
+                }
+            }
+            loreText = storyLines.join('\n');
+
+            return {
+                slot,
+                attrs,
+                playerId: header.playerId,
+                material: header.material,
+                displayName: header.displayName,
+                loreText
+            };
         }
 
         function toggleUpgradePanel() {
@@ -621,6 +672,11 @@
                 }
 
                 // 1) 恢复到界面
+                if (parsed.playerId) document.getElementById('playerId').value = parsed.playerId;
+                if (parsed.material) document.getElementById('itemMaterial').value = parsed.material;
+                if (parsed.displayName) document.getElementById('itemName').value = parsed.displayName;
+                if (parsed.loreText != null) document.getElementById('itemLore').value = parsed.loreText;
+
                 document.getElementById('itemSlot').value = slot;
                 updateVisibleAttributes();
 
