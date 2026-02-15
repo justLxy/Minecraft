@@ -1091,7 +1091,7 @@
             
             // 头部
             loreHtml += parseMcColor(name + '&c[右键绑定]') + '<br><br>';
-            loreHtml += parseMcColor('&7&l&m----------&6&l武器描述&7&l&m---------') + '<br>';
+            loreHtml += parseMcColor('&7&l&m----------&r&6&l武器描述&7&l&m---------') + '<br>';
             loreHtml += parseMcColor('&0.') + '<br>';
             loreHtml += parseMcColor('&e最上级<100%>&0............&e定制') + '<br>';
             loreHtml += parseMcColor('&d可升级') + '<br>';
@@ -1110,7 +1110,7 @@
                  loreHtml += parseMcColor(`&b&l伤害:&2&l +${dmgInput.value}`) + '<br>';
             }
 
-            loreHtml += parseMcColor('&7&l&m----------&6&l武器属性&7&l&m---------') + '<br>';
+            loreHtml += parseMcColor('&7&l&m----------&r&6&l武器属性&7&l&m---------') + '<br>';
             
             inputs.forEach(input => {
                 const val = parseFloat(input.value);
@@ -1131,7 +1131,7 @@
             }
 
             // 尾部故事
-            loreHtml += parseMcColor('&7&l&m----------&6&l背景故事&7&l&m---------') + '<br>';
+            loreHtml += parseMcColor('&7&l&m----------&r&6&l背景故事&7&l&m---------') + '<br>';
             loreHtml += parseMcColor('&0.') + '<br>';
             
             const loreLines = loreRaw.split('\n');
@@ -1159,7 +1159,7 @@
             // 构建 Lore 数组
             let loreList = [];
             loreList.push('');
-            loreList.push('&7&l&m----------&6&l武器描述&7&l&m---------');
+            loreList.push('&7&l&m----------&r&6&l武器描述&7&l&m---------');
             loreList.push('&0.');
             loreList.push('&e最上级<100%>&0............&e定制');
             loreList.push('&d可升级');
@@ -1185,7 +1185,7 @@
                  loreList.push(`&b&l伤害:&2&l +${activeAttrs['ap_attack']}`);
             }
 
-            loreList.push('&7&l&m----------&6&l武器属性&7&l&m---------');
+            loreList.push('&7&l&m----------&r&6&l武器属性&7&l&m---------');
 
             inputs.forEach(input => {
                 if (activeAttrs[input.id] && input.id !== 'ap_attack') {
@@ -1197,7 +1197,7 @@
                 }
             });
 
-            loreList.push('&7&l&m----------&6&l背景故事&7&l&m---------');
+            loreList.push('&7&l&m----------&r&6&l背景故事&7&l&m---------');
             loreList.push('&0.');
             loreRaw.split('\n').forEach(line => {
                 if(line.trim()) loreList.push(`&7&o${line}`);
