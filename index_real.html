@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>记忆代理人 - 传说武器锻造台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --panel-bg: #2b2b2b;
+            --border-color: #555;
+            --accent-color: #a855f7; /* 恢复紫色主题 */
+            --gold-color: #fbbf24;
+            --text-color: #e5e5e5;
+            --mc-tooltip-bg: rgba(16, 0, 16, 0.95);
+            --mc-border: #2a002a;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'DotGothic16', 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background-color: var(--bg-color);
+            background-image: url('https://assets.codepen.io/13471/dark-texture.png'); 
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            font-family: 'DotGothic16', sans-serif;
+            color: #38bdf8; /* 标题蓝色 */
+            text-shadow: 4px 4px 0px #0f4c75;
+            margin-bottom: 10px;
+            text-align: center;
+            line-height: 1.5;
+            font-size: 3rem;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        /* 左侧配置区 */
+        .config-panel {
+            background: var(--panel-bg);
+            border: 2px solid var(--border-color);
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .section-title {
+            font-size: 1.2rem;
+            color: var(--gold-color); /* 恢复金色 */
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-top: 20px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            font-family: 'DotGothic16', sans-serif;
+        }
+        .section-title:first-child { margin-top: 0; }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+            color: #ccc;
+            letter-spacing: 1px;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            background: #111;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 10px;
+            border-radius: 2px;
+            font-family: inherit;
+            letter-spacing: 2px;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        input[type="range"] {
+            flex: 1;
+        }
+
+        .attr-input-group {
+            display: grid;
+            grid-template-columns: 2fr 1fr 0.8fr;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 8px;
+            background: rgba(0,0,0,0.2);
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+
+        .attr-price {
+            font-size: 0.85rem;
+            color: var(--gold-color);
+            text-align: right;
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        /* 右侧预览区 */
+        .preview-panel {
+            position: sticky;
+            top: 20px;
+        }
+
+        .price-card {
+            background: linear-gradient(135deg, #2c0b38, #1a1a1a);
+            border: 2px solid var(--accent-color);
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
+        }
+
+        .price-label { font-size: 0.9rem; color: #aaa; }
+        .price-container {
+            display: flex;
+            justify-content: center;
+            align-items: baseline;
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .total-price { 
+            font-size: 2.5rem; 
+            font-weight: bold; 
+            color: var(--gold-color); 
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            font-family: 'Press Start 2P', cursive;
+        }
+        .currency { 
+            font-size: 1.2rem; 
+            color: #fff; 
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        .mc-tooltip {
+            background-color: var(--mc-tooltip-bg);
+            border: 3px solid #2a002a;
+            border-top-color: #2a002a; /* Minecraft tooltips usually have a specific border style, simplified here */
+            border-radius: 4px;
+            padding: 12px;
+            color: #fff;
+            font-family: 'DotGothic16', sans-serif; /* 使用支持中文的像素字体 */
+            line-height: 1.5;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            min-height: 300px;
+            position: relative;
+            font-size: 18px; /* 像素字体大一点才清晰 */
+            letter-spacing: 1px;
+        }
+
+        /* Minecraft Color Codes Simulation */
+        .mc-0 { color: #000000; }
+        .mc-1 { color: #0000AA; }
+        .mc-2 { color: #00AA00; }
+        .mc-3 { color: #00AAAA; }
+        .mc-4 { color: #AA0000; }
+        .mc-5 { color: #AA00AA; }
+        .mc-6 { color: #FFAA00; }
+        .mc-7 { color: #AAAAAA; }
+        .mc-8 { color: #555555; }
+        .mc-9 { color: #5555FF; }
+        .mc-a { color: #55FF55; }
+        .mc-b { color: #55FFFF; }
+        .mc-c { color: #FF5555; }
+        .mc-d { color: #FF55FF; }
+        .mc-e { color: #FFFF55; }
+        .mc-f { color: #FFFFFF; }
+        .mc-l { font-weight: bold; }
+        .mc-m { text-decoration: line-through; }
+        .mc-n { text-decoration: underline; }
+        .mc-o { font-style: italic; }
+
+        .action-btn {
+            width: 100%;
+            padding: 15px;
+            margin-top: 20px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            font-weight: bold;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            clip-path: polygon(5% 0, 100% 0, 100% 90%, 95% 100%, 0 100%, 0 10%);
+        }
+
+        .action-btn:hover {
+            background: #9333ea;
+            transform: translateY(-2px);
+        }
+
+        .action-btn:active {
+            transform: translateY(0);
+        }
+
+        @media (max-width: 768px) {
+            .container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>记忆代理人 x 落花星雨</h1>
+    <div class="subtitle">专属武器定制终端 - 打造属于你的传说</div>
+
+    <div class="container">
+        <!-- 左侧：配置面板 -->
+        <div class="config-panel">
+            
+            <div class="section-title">基础信息</div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>玩家 ID (绑定者)</label>
+                    <input type="text" id="playerId" placeholder="输入你的游戏ID" oninput="updatePreview()">
+                </div>
+                <div class="form-group">
+                    <label>武器类型 (材质ID)</label>
+                    <input type="text" id="itemMaterial" list="material_list" placeholder="输入材质英文名 (如 DIAMOND_SWORD)" oninput="updatePreview()" value="WOODEN_SWORD">
+                    <datalist id="material_list">
+                        <!-- 武器 -->
+                        <option value="WOODEN_SWORD">木剑</option>
+                        <option value="IRON_SWORD">铁剑</option>
+                        <option value="DIAMOND_SWORD">钻石剑</option>
+                        <option value="NETHERITE_SWORD">下界合金剑</option>
+                        <option value="BOW">弓</option>
+                        <option value="CROSSBOW">弩</option>
+                        <option value="TRIDENT">三叉戟</option>
+                        <option value="SHIELD">盾牌</option>
+                        <option value="DIAMOND_AXE">钻石斧</option>
+                        
+                        <!-- 头盔 -->
+                        <option value="LEATHER_HELMET">皮革帽子</option>
+                        <option value="IRON_HELMET">铁头盔</option>
+                        <option value="DIAMOND_HELMET">钻石头盔</option>
+                        <option value="NETHERITE_HELMET">下界合金头盔</option>
+                        
+                        <!-- 胸甲 -->
+                        <option value="LEATHER_CHESTPLATE">皮革外套</option>
+                        <option value="IRON_CHESTPLATE">铁胸甲</option>
+                        <option value="DIAMOND_CHESTPLATE">钻石胸甲</option>
+                        <option value="NETHERITE_CHESTPLATE">下界合金胸甲</option>
+                        
+                        <!-- 护腿 -->
+                        <option value="LEATHER_LEGGINGS">皮革裤子</option>
+                        <option value="IRON_LEGGINGS">铁护腿</option>
+                        <option value="DIAMOND_LEGGINGS">钻石护腿</option>
+                        <option value="NETHERITE_LEGGINGS">下界合金护腿</option>
+                        
+                        <!-- 靴子 -->
+                        <option value="LEATHER_BOOTS">皮革靴子</option>
+                        <option value="IRON_BOOTS">铁靴子</option>
+                        <option value="DIAMOND_BOOTS">钻石靴子</option>
+                        <option value="NETHERITE_BOOTS">下界合金靴子</option>
+                    </datalist>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>武器名称 (最多10字)</label>
+                    <input type="text" id="itemName" value="&c定制武器" maxlength="16" placeholder="最多10字 (含颜色代码限制16字符)" oninput="updatePreview()">
+                </div>
+                <div class="form-group">
+                    <label>装备部位</label>
+                    <select id="itemSlot" onchange="updateVisibleAttributes()">
+                        <option value="主手">主手</option>
+                        <option value="副手">副手</option>
+                        <option value="头盔">头盔</option>
+                        <option value="胸甲">胸甲</option>
+                        <option value="护腿">护腿</option>
+                        <option value="靴子">靴子</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>背景故事 (最多5行，每行15字)</label>
+                <textarea id="itemLore" rows="5" placeholder="输入背景故事..." oninput="validateLore(this)">由记忆碎片凝结而成。</textarea>
+            </div>
+
+            <div id="attributes-container">
+                <!-- 属性将通过 JS 动态生成 -->
+            </div>
+
+        </div>
+
+        <!-- 右侧：预览与结算 -->
+        <div class="preview-panel">
+            <div class="price-card">
+                <div class="price-label">定制预估价格</div>
+                <div class="price-container">
+                    <span class="total-price" id="totalPrice">0</span>
+                    <span class="currency">RMB</span>
+                </div>
+            </div>
+
+            <div class="mc-tooltip" id="tooltipPreview">
+                <!-- 预览内容 -->
+            </div>
+
+            <button class="action-btn" onclick="copyConfig()">复制配置代码</button>
+            <div style="text-align: center; margin-top: 10px; font-size: 0.8rem; color: #666;">
+                复制后请发送给管理员进行实装
+            </div>
+
+            <div id="adminPanel" style="margin-top: 30px; border-top: 2px dashed #444; padding-top: 20px; display: none;">
+                <div class="section-title" style="font-size: 1rem;">管理员验证台</div>
+                <textarea id="importArea" rows="3" placeholder="在此粘贴玩家发来的 YAML 配置代码以验证价格..." style="font-size: 0.8rem; height: 80px;"></textarea>
+                <button class="action-btn" style="background: #444; margin-top: 10px; font-size: 0.9rem;" onclick="verifyConfig()">验证并导入配置</button>
+                <div id="verifyResult" style="margin-top: 10px; font-size: 0.9rem; font-weight: bold; text-align: center;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SECRET_SALT = "记忆代理人";
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('admin') === 'true') {
+            document.getElementById('adminPanel').style.display = 'block';
+        }
+
+        let titleClickCount = 0;
+        document.querySelector('h1').addEventListener('click', () => {
+            titleClickCount++;
+            if (titleClickCount >= 5) {
+                const panel = document.getElementById('adminPanel');
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    alert('管理员验证台已开启');
+                } else {
+                    panel.style.display = 'none';
+                }
+                titleClickCount = 0;
+            }
+        });
+        // 验证背景故事限制
+        function validateLore(textarea) {
+            const maxLines = 5;
+            const maxChars = 15;
+            
+            let lines = textarea.value.split('\n');
+            let modified = false;
+
+            // 限制行数
+            if (lines.length > maxLines) {
+                lines = lines.slice(0, maxLines);
+                modified = true;
+            }
+
+            // 限制每行字数
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].length > maxChars) {
+                    lines[i] = lines[i].slice(0, maxChars);
+                    modified = true;
+                }
+            }
+
+            if (modified) {
+                // 简单防抖，避免输入法冲突，但为了强限制直接赋值
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                textarea.value = lines.join('\n');
+                // 尝试恢复光标
+                try { textarea.setSelectionRange(start, end); } catch(e){}
+            }
+            
+            updatePreview();
+        }
+
+        // 定义属性配置
+        // costFactor: 价格系数
+        // isPercent: 是否为百分比属性
+        // baseCost: 开启该属性的基础费用
+        // limit: 软上限，超过此值价格暴涨
+        // 定义属性配置
+        // allowed: ['weapon', 'armor', 'all'] - 允许的装备类型
+        const attributesDB = {
+            attack: [
+                { id: 'ap_attack', name: '伤害', color: '&a', costFactor: 0.02, isPercent: false, limit: 5000, label: '伤害', allowed: ['weapon'] },
+                { id: 'ap_pvp_attack', name: 'PVP攻击', color: '&a', costFactor: 0.01, isPercent: false, limit: 5000, label: 'PVP攻击', allowed: ['weapon'] },
+                { id: 'ap_pve_attack', name: 'PVE攻击', color: '&a', costFactor: 0.01, isPercent: false, limit: 5000, label: 'PVE攻击', allowed: ['weapon'] },
+                { id: 'ap_real_attack', name: '真实攻击', color: '&6', costFactor: 2.0, isPercent: false, limit: 500, label: '真实攻击', allowed: ['weapon'] },
+                { id: 'ap_fire', name: '燃烧几率', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '燃烧几率', allowed: ['weapon'] },
+                { id: 'ap_fire_damage', name: '火焰攻击', color: '&6', costFactor: 0.01, isPercent: false, limit: 5000, label: '火焰攻击', allowed: ['weapon'] },
+                { id: 'ap_crit', name: '暴击几率', color: '&c', costFactor: 1.5, isPercent: true, limit: 50, label: '暴击几率', allowed: ['weapon'] },
+                { id: 'ap_crit_rate', name: '暴击倍率', color: '&c', costFactor: 3, isPercent: true, limit: 100, label: '暴击倍率', allowed: ['weapon'] },
+                { id: 'ap_vampire', name: '吸血几率', color: '&c', costFactor: 3, isPercent: true, limit: 30, label: '吸血几率', allowed: ['weapon'] },
+                { id: 'ap_vampire_rate', name: '吸血倍率', color: '&c', costFactor: 1, isPercent: true, limit: 50, label: '吸血倍率', allowed: ['weapon'] },
+                { id: 'ap_hit', name: '命中几率', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '命中几率', allowed: ['weapon'] },
+                { id: 'ap_frozen', name: '冰冻几率', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '冰冻几率', allowed: ['weapon'] },
+                { id: 'ap_frozen_intensity', name: '冰冻强度', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '冰冻强度', allowed: ['weapon'] },
+                { id: 'ap_lightning', name: '雷击几率', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '雷击几率', allowed: ['weapon'] },
+                { id: 'ap_lightning_damage', name: '雷电攻击', color: '&3', costFactor: 0.01, isPercent: false, limit: 5000, label: '雷电攻击', allowed: ['weapon'] },
+                { id: 'ap_sunder_armor', name: '破甲几率', color: '&3', costFactor: 2, isPercent: true, limit: 40, label: '破甲几率', allowed: ['weapon'] },
+                { id: 'ap_see_through', name: '护甲穿透', color: '&6', costFactor: 5, isPercent: true, limit: 30, label: '护甲穿透', allowed: ['weapon'] },
+                { id: 'ap_break_shield', name: '破盾几率', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '破盾几率', allowed: ['weapon'] },
+            ],
+            defense: [
+                { id: 'ap_armor', name: '护甲值', color: '&a', costFactor: 5, isPercent: false, limit: 100, label: '护甲值', allowed: ['armor'] },
+                { id: 'ap_defense', name: '防御', color: '&a', costFactor: 10, isPercent: false, limit: 50, label: '防御', allowed: ['armor'] },
+                { id: 'ap_pvp_defense', name: 'PVP减伤', color: '&a', costFactor: 0.02, isPercent: false, limit: 5000, label: 'PVP减伤', allowed: ['armor'] },
+                { id: 'ap_pve_defense', name: 'PVE减伤', color: '&a', costFactor: 0.02, isPercent: false, limit: 5000, label: 'PVE减伤', allowed: ['armor'] },
+                { id: 'ap_crit_damage_resist', name: '暴伤抵抗', color: '&c', costFactor: 1, isPercent: true, limit: 50, label: '暴伤抵抗', allowed: ['armor'] },
+                { id: 'ap_crit_resist', name: '暴击抵抗', color: '&c', costFactor: 1, isPercent: true, limit: 50, label: '暴击抵抗', allowed: ['armor'] },
+                { id: 'ap_crit_dodge', name: '暴击闪避', color: '&c', costFactor: 1, isPercent: true, limit: 50, label: '暴击闪避', allowed: ['armor'] },
+                { id: 'ap_vampire_dodge', name: '吸血闪避', color: '&c', costFactor: 1, isPercent: true, limit: 50, label: '吸血闪避', allowed: ['armor'] },
+                { id: 'ap_vampire_resist', name: '吸血抵抗', color: '&c', costFactor: 1, isPercent: true, limit: 50, label: '吸血抵抗', allowed: ['armor'] },
+                { id: 'ap_reflection', name: '反弹几率', color: '&6', costFactor: 2, isPercent: true, limit: 30, label: '反弹几率', allowed: ['armor'] },
+                { id: 'ap_reflection_rate', name: '反弹倍率', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '反弹倍率', allowed: ['armor'] },
+                { id: 'ap_dodge', name: '闪避几率', color: '&6', costFactor: 3, isPercent: true, limit: 30, label: '闪避几率', allowed: ['armor'] },
+                { id: 'ap_shield_block', name: '盾牌格挡率', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '盾牌格挡率', allowed: ['armor'] },
+                { id: 'ap_remote_immune', name: '箭伤免疫率', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '箭伤免疫率', allowed: ['armor'] },
+            ],
+            other: [
+                { id: 'ap_health', name: '生命力', color: '&a', costFactor: 0.02, isPercent: false, limit: 5000, label: '生命力', allowed: ['armor'] },
+                { id: 'ap_restore', name: '生命恢复', color: '&a', costFactor: 2, isPercent: false, limit: 100, label: '生命恢复', allowed: ['armor'] },
+                { id: 'ap_restore_ratio', name: '百分比恢复', color: '&a', costFactor: 10, isPercent: true, limit: 10, label: '百分比恢复', allowed: ['armor'] },
+                { id: 'ap_accumulate_addition', name: '蓄力加成', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '蓄力加成', allowed: ['weapon'] },
+                { id: 'ap_accumulate_disturb', name: '蓄力干扰', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '蓄力干扰', allowed: ['weapon'] },
+                { id: 'ap_moving', name: '移速加成', color: '&6', costFactor: 1, isPercent: true, limit: 50, label: '移速加成', allowed: ['all'] },
+                { id: 'ap_exp_addition', name: '经验加成', color: '&6', costFactor: 1, isPercent: true, limit: 100, label: '经验加成', allowed: ['all'] },
+                { id: 'ap_shoot_speed', name: '弓箭射速', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '弓箭射速', allowed: ['weapon'] },
+                { id: 'ap_shoot_spread', name: '箭术精准', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '箭术精准', allowed: ['weapon'] },
+                { id: 'ap_shoot_through', name: '箭术穿透率', color: '&3', costFactor: 2, isPercent: true, limit: 50, label: '箭术穿透率', allowed: ['weapon'] },
+            ]
+        };
+
+        // 初始化页面
+        function init() {
+            const container = document.getElementById('attributes-container');
+            
+            const createSection = (title, attrs) => {
+                let html = `<div class="section-title">${title}</div>`;
+                attrs.forEach(attr => {
+                    const step = attr.isPercent ? 1 : (attr.id.includes('attack') || attr.id.includes('health') ? 10 : 1);
+                    const suffix = attr.isPercent ? '%' : '';
+                    const placeholder = attr.isPercent ? '0-100' : '数值';
+                    
+                    html += `
+                    <div class="attr-input-group">
+                        <label>${parseMcColor(attr.color + attr.name)}</label>
+                        <input type="number" 
+                            id="${attr.id}" 
+                            data-is-percent="${attr.isPercent}"
+                            data-cost="${attr.costFactor}"
+                            data-limit="${attr.limit}"
+                            data-mc-color="${attr.color}"
+                            data-label="${attr.label}"
+                            data-allowed='${JSON.stringify(attr.allowed)}'
+                            placeholder="0" 
+                            step="${step}"
+                            oninput="updatePreview()"
+                            min="0">
+                        <span id="price-${attr.id}" class="attr-price"></span>
+                    </div>`;
+                });
+                return html;
+            };
+
+            container.innerHTML += createSection('攻击属性 (仅限武器)', attributesDB.attack);
+            container.innerHTML += createSection('防御属性 (仅限装备栏)', attributesDB.defense);
+            container.innerHTML += createSection('特殊属性 (部分通用)', attributesDB.other);
+
+            updateVisibleAttributes(); // 初始化时更新可见性
+            updatePreview();
+        }
+
+        // 监听装备部位变化
+        function updateVisibleAttributes() {
+            const slot = document.getElementById('itemSlot').value;
+            let currentType = 'weapon'; // 默认为武器类型
+
+            if (['头盔', '胸甲', '护腿', '靴子'].includes(slot)) {
+                currentType = 'armor';
+            }
+
+            const inputs = document.querySelectorAll('#attributes-container input');
+            inputs.forEach(input => {
+                let allowed = [];
+                try {
+                    allowed = JSON.parse(input.dataset.allowed || '[]');
+                } catch (e) {
+                    console.error('JSON Parse error', e);
+                }
+                
+                const container = input.closest('.attr-input-group');
+                
+                // 检查是否允许显示
+                const isAllowed = allowed.includes('all') || allowed.includes(currentType);
+
+                if (isAllowed) {
+                    container.style.display = 'grid';
+                } else {
+                    container.style.display = 'none';
+                    input.value = ''; // 隐藏时清空数值
+                    // 清空价格显示
+                    const priceSpan = document.getElementById(`price-${input.id}`);
+                    if (priceSpan) {
+                        priceSpan.innerText = '';
+                        priceSpan.style.opacity = '0';
+                    }
+                }
+            });
+            
+            updatePreview(); // 状态改变后更新预览
+        }
+
+        // 价格计算逻辑
+        function calculatePrice() {
+            let totalPrice = 0; // 基础价格从0开始计算
+            const slot = document.getElementById('itemSlot').value;
+            
+            // 确定部位倍率
+            let slotMultiplier = 1.0;
+            if (slot === '副手') {
+                slotMultiplier = 2.0; // 副手双倍价格
+            }
+
+            const inputs = document.querySelectorAll('#attributes-container input');
+            inputs.forEach(input => {
+                // 如果被隐藏了（display: none），则不计算价格
+                const container = input.closest('.attr-input-group');
+                if (container && container.style.display === 'none') return;
+
+                let val = parseFloat(input.value);
+                let cost = 0;
+                
+                if (val && val > 0) {
+                    const costFactor = parseFloat(input.dataset.cost);
+                    const limit = parseFloat(input.dataset.limit);
+                    
+                    // 核心定价算法
+                    // 1. 基础线性价格
+                    cost = val * costFactor;
+
+                    // 2. 惩罚性指数增长
+                    if (val > limit) {
+                        const excessRatio = (val - limit) / limit;
+                        cost += cost * excessRatio * 2; 
+                    }
+                    
+                    // 应用部位倍率
+                    cost = cost * slotMultiplier;
+                }
+
+                // 更新单个属性的价格显示
+                const priceSpan = document.getElementById(`price-${input.id}`);
+                if (priceSpan) {
+                    if (cost > 0) {
+                        priceSpan.innerText = `+${Math.ceil(cost)}`;
+                        priceSpan.style.opacity = '1';
+                    } else {
+                        priceSpan.innerText = '';
+                        priceSpan.style.opacity = '0';
+                    }
+                }
+
+                totalPrice += cost;
+            });
+
+            // 最低消费 50
+            return Math.ceil(Math.max(totalPrice, 50));
+        }
+
+        // Minecraft 颜色代码解析 (修复版：正确处理样式继承和重置)
+        function parseMcColor(text) {
+            if (!text) return '';
+            
+            let html = '';
+            let currentColor = ''; // 当前颜色类名
+            let currentFormats = new Set(); // 当前格式类名集合
+            
+            const parts = text.split('&');
+            
+            // 处理第一个 & 之前的内容
+            if (parts[0]) {
+                html += parts[0];
+            }
+            
+            for (let i = 1; i < parts.length; i++) {
+                const part = parts[i];
+                if (part.length === 0) continue; 
+                
+                const code = part.charAt(0).toLowerCase();
+                const content = part.substring(1);
+                
+                // 判断代码类型
+                if ('0123456789abcdef'.includes(code)) {
+                    // 颜色代码：更新颜色，清空格式 (Minecraft 机制)
+                    currentColor = `mc-${code}`;
+                    currentFormats.clear();
+                } else if ('lmnok'.includes(code)) {
+                    // 格式代码：添加格式
+                    currentFormats.add(`mc-${code}`);
+                } else if (code === 'r') {
+                    // 重置代码
+                    currentColor = '';
+                    currentFormats.clear();
+                }
+                
+                if (content.length > 0) {
+                    // 生成 span
+                    let classes = [];
+                    if (currentColor) classes.push(currentColor);
+                    currentFormats.forEach(f => classes.push(f));
+                    
+                    if (classes.length > 0) {
+                        html += `<span class="${classes.join(' ')}">${content}</span>`;
+                    } else {
+                        html += content;
+                    }
+                }
+            }
+            
+            return html;
+        }
+
+        // 更新预览和价格
+        function updatePreview() {
+            const price = calculatePrice();
+            document.getElementById('totalPrice').innerText = price;
+
+            const name = document.getElementById('itemName').value || '未命名武器';
+            const slot = document.getElementById('itemSlot').value;
+            const loreRaw = document.getElementById('itemLore').value;
+            const playerId = document.getElementById('playerId').value || 'Player';
+
+            let loreHtml = '';
+            
+            // 头部
+            loreHtml += parseMcColor(name + '&c[右键绑定]') + '<br><br>';
+            loreHtml += parseMcColor('&7&l&m----------&6&l武器描述&7&l&m---------') + '<br>';
+            loreHtml += parseMcColor('&0.') + '<br>';
+            loreHtml += parseMcColor('&e最上级<100%>&0............&e定制') + '<br>';
+            loreHtml += parseMcColor('&d可升级') + '<br>';
+            loreHtml += parseMcColor(`&e装备类型: ${slot}`) + '<br>';
+            loreHtml += parseMcColor('&0.') + '<br>';
+
+            // 属性部分
+            let hasAttr = false;
+            
+            // 1. 先找伤害显示在上面 (模仿 AttributePlus 风格或商城风格)
+            const inputs = Array.from(document.querySelectorAll('#attributes-container input'));
+            
+            // 寻找伤害
+            const dmgInput = inputs.find(i => i.id === 'ap_attack');
+            if (dmgInput && dmgInput.value > 0) {
+                 loreHtml += parseMcColor(`&b&l伤害:&2&l +${dmgInput.value}`) + '<br>';
+            }
+
+            loreHtml += parseMcColor('&7&l&m----------&6&l武器属性&7&l&m---------') + '<br>';
+            
+            inputs.forEach(input => {
+                const val = parseFloat(input.value);
+                if (val > 0 && input.id !== 'ap_attack') { // 伤害已经显示过了
+                    const label = input.dataset.label;
+                    const color = input.dataset.mcColor;
+                    const isPercent = input.dataset.isPercent === 'true';
+                    const suffix = isPercent ? '%' : '';
+                    
+                    // 格式：&f&l属性名:&2&l +数值%
+                    loreHtml += parseMcColor(`${color}&l${label}:&2&l +${val}${suffix}`) + '<br>';
+                    hasAttr = true;
+                }
+            });
+
+            if (!hasAttr && (!dmgInput || dmgInput.value <= 0)) {
+                loreHtml += parseMcColor('&7(暂无附加属性)') + '<br>';
+            }
+
+            // 尾部故事
+            loreHtml += parseMcColor('&7&l&m----------&6&l背景故事&7&l&m---------') + '<br>';
+            loreHtml += parseMcColor('&0.') + '<br>';
+            
+            const loreLines = loreRaw.split('\n');
+            loreLines.forEach(line => {
+                if(line.trim()) loreHtml += parseMcColor(`&7&o${line}`) + '<br>';
+            });
+            loreHtml += parseMcColor('&0.') + '<br>';
+
+            document.getElementById('tooltipPreview').innerHTML = loreHtml;
+        }
+
+        // 生成 YAML 并复制
+        function copyConfig() {
+            const playerId = document.getElementById('playerId').value || 'CustomItem';
+            const material = document.getElementById('itemMaterial').value;
+            const name = document.getElementById('itemName').value;
+            const slot = document.getElementById('itemSlot').value;
+            const loreRaw = document.getElementById('itemLore').value;
+            const price = document.getElementById('totalPrice').innerText;
+
+            // 构建 Lore 数组
+            let loreList = [];
+            loreList.push('');
+            loreList.push('&7&l&m----------&6&l武器描述&7&l&m---------');
+            loreList.push('&0.');
+            loreList.push('&e最上级<100%>&0............&e定制');
+            loreList.push('&d可升级');
+            loreList.push(`&e装备类型: ${slot}`);
+            loreList.push('&0.');
+
+            // 收集所有有效属性
+            const inputs = Array.from(document.querySelectorAll('#attributes-container input'));
+            const activeAttrs = {};
+            
+            inputs.forEach(input => {
+                const val = parseFloat(input.value);
+                const container = input.closest('.attr-input-group');
+                // 只有非隐藏且有值的属性才会被记录
+                if (val > 0 && container.style.display !== 'none') {
+                    activeAttrs[input.id] = val;
+                }
+            });
+
+            // 生成 Lore
+            // 1. 伤害优先
+            if (activeAttrs['ap_attack']) {
+                 loreList.push(`&b&l伤害:&2&l +${activeAttrs['ap_attack']}`);
+            }
+
+            loreList.push('&7&l&m----------&6&l武器属性&7&l&m---------');
+
+            inputs.forEach(input => {
+                if (activeAttrs[input.id] && input.id !== 'ap_attack') {
+                    const label = input.dataset.label;
+                    const color = input.dataset.mcColor;
+                    const isPercent = input.dataset.isPercent === 'true';
+                    const suffix = isPercent ? '%' : '';
+                    loreList.push(`${color}&l${label}:&2&l +${activeAttrs[input.id]}${suffix}`);
+                }
+            });
+
+            loreList.push('&7&l&m----------&6&l背景故事&7&l&m---------');
+            loreList.push('&0.');
+            loreRaw.split('\n').forEach(line => {
+                if(line.trim()) loreList.push(`&7&o${line}`);
+            });
+            loreList.push('&0.');
+
+            // 生成校验签名
+            // 签名包含：价格 + 所有属性值 + 盐值
+            // 这样即使玩家改了 YAML 里的价格注释，或者改了属性值，签名都会对不上
+            const signData = {
+                p: price,
+                s: slot,
+                a: activeAttrs,
+                t: Date.now(),
+                salt: SECRET_SALT
+            };
+            // 简单的 Base64 编码作为签名 (防小白修改)
+            // 修复：btoa 不支持中文，需要先 encodeURIComponent
+            const signature = btoa(unescape(encodeURIComponent(JSON.stringify(signData))));
+
+            // 格式化 YAML
+            let yaml = `# 玩家定制订单 - 价格: ${price} RMB\n`;
+            yaml += `# 校验签名: ${signature}\n`; // 关键行
+            yaml += `${playerId}_Custom:\n`;
+            yaml += `  Id: ${material}\n`;
+            yaml += `  Data: 0\n`;
+            yaml += `  Display: '${name}§c[右键绑定]'\n`;
+            yaml += `  Lore:\n`;
+            loreList.forEach(l => {
+                yaml += `    - '${l}'\n`;
+            });
+            yaml += `  Options:\n`;
+            yaml += `    Unbreakable: true\n`;
+            yaml += `    HideFlags: true\n`;
+
+            // 复制到剪贴板
+            navigator.clipboard.writeText(yaml).then(() => {
+                const btn = document.querySelector('.action-btn');
+                const originalText = btn.innerText;
+                btn.innerText = "已复制到剪贴板！";
+                btn.style.background = "#22c55e";
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.style.background = "";
+                }, 2000);
+            });
+        }
+
+        // 验证配置
+        function verifyConfig() {
+            const yaml = document.getElementById('importArea').value;
+            const resultDiv = document.getElementById('verifyResult');
+            
+            if (!yaml) {
+                resultDiv.innerText = "请先粘贴 YAML 配置代码！";
+                resultDiv.style.color = "#ef4444";
+                return;
+            }
+
+            // 提取签名 (Base64)
+            const signMatch = yaml.match(/# 校验签名: (.+)/);
+            if (!signMatch) {
+                resultDiv.innerText = "❌ 错误：未找到校验签名，可能是伪造或旧版本配置！";
+                resultDiv.style.color = "#ef4444";
+                return;
+            }
+
+            try {
+                // 解码签名 (修复：atob 后需要 decodeURIComponent)
+                const signData = JSON.parse(decodeURIComponent(escape(atob(signMatch[1]))));
+                
+                // 验证盐值 (防止玩家自己编造 JSON 结构)
+                if (signData.salt !== SECRET_SALT) {
+                    throw new Error("Invalid Salt");
+                }
+
+                // 恢复数据到界面
+                // 1. 恢复部位 (必须先恢复部位，否则 updateVisibleAttributes 会隐藏属性导致无法赋值)
+                document.getElementById('itemSlot').value = signData.s;
+                updateVisibleAttributes(); // 触发界面更新，显示该显示的属性框
+
+                // 2. 清空所有输入
+                document.querySelectorAll('#attributes-container input').forEach(i => i.value = '');
+
+                // 3. 填入属性
+                if (signData.a) {
+                    for (const [id, val] of Object.entries(signData.a)) {
+                        const input = document.getElementById(id);
+                        if (input) {
+                            input.value = val;
+                        }
+                    }
+                }
+
+                // 4. 重新计算当前价格 (使用网页当前的计费逻辑)
+                const currentPrice = calculatePrice();
+                
+                // 5. 验证价格一致性
+                // signData.p 是玩家生成配置时的价格
+                // currentPrice 是管理员现在计算出的价格
+                if (currentPrice == signData.p) {
+                    resultDiv.innerHTML = `✅ 验证通过！<br>原始价格: ${signData.p} | 当前计算: ${currentPrice}<br>配置已导入界面，您可以检查属性是否正确。`;
+                    resultDiv.style.color = "#22c55e";
+                    updatePreview(); // 更新预览
+                } else {
+                    resultDiv.innerHTML = `⚠️ 警告：价格不匹配！<br>签名价格: ${signData.p} | 实际应付: ${currentPrice}<br>可能原因：玩家修改了属性、P图改了价格，或者您的计费规则已更新。`;
+                    resultDiv.style.color = "#fbbf24";
+                    updatePreview();
+                }
+
+            } catch (e) {
+                console.error(e);
+                resultDiv.innerText = "❌ 错误：签名解析失败，配置可能已损坏！";
+                resultDiv.style.color = "#ef4444";
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
