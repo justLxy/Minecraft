@@ -332,7 +332,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label>武器名称</label>
-                    <input type="text" id="itemName" value="&c定制武器" maxlength="16" placeholder="最多10字 (含颜色代码限制16字符)" oninput="updatePreview()" required>
+                    <input type="text" id="itemName" value="&d记忆回响" maxlength="16" placeholder="最多10字 (含颜色代码限制16字符)" oninput="updatePreview()" required>
                 </div>
                 <div class="form-group">
                     <label>装备部位</label>
@@ -347,8 +347,10 @@
                 </div>
             </div>
             <div class="form-group">
-                <label>背景故事 (最多5行，每行15字)</label>
-                <textarea id="itemLore" rows="5" placeholder="输入背景故事..." oninput="validateLore(this)" required>由记忆碎片凝结而成。</textarea>
+                <label>背景故事 (最多8行，每行20字)</label>
+                <textarea id="itemLore" rows="5" placeholder="输入背景故事..." oninput="validateLore(this)" required>由记忆碎片凝结。
+落花与星雨共鸣。
+愿执此刃，守你归途。</textarea>
             </div>
 
             <div id="attributes-container">
@@ -676,8 +678,8 @@
         });
         // 验证背景故事限制
         function validateLore(textarea) {
-            const maxLines = 5;
-            const maxChars = 15;
+            const maxLines = 8;
+            const maxChars = 20;
             
             let lines = textarea.value.split('\n');
             let modified = false;
@@ -786,7 +788,7 @@
                 { id: 'ap_break_shield', name: '破盾几率', color: '&3', costFactor: 1, isPercent: true, limit: 50, label: '破盾几率', allowed: ['weapon'] },
             ],
             defense: [
-                { id: 'ap_armor', name: '护甲值', color: '&a', costFactor: 5, isPercent: false, limit: 100, label: '护甲值', allowed: ['armor'] },
+                { id: 'ap_armor', name: '护甲值', color: '&a', costFactor: 5, isPercent: true, limit: 100, label: '护甲值', allowed: ['armor'] },
                 { id: 'ap_defense', name: '防御', color: '&a', costFactor: 10, isPercent: false, limit: 50, label: '防御', allowed: ['armor'] },
                 { id: 'ap_pvp_defense', name: 'PVP减伤', color: '&a', costFactor: 0.02, isPercent: false, limit: 5000, label: 'PVP减伤', allowed: ['armor'] },
                 { id: 'ap_pve_defense', name: 'PVE减伤', color: '&a', costFactor: 0.02, isPercent: false, limit: 5000, label: 'PVE减伤', allowed: ['armor'] },
