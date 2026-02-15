@@ -380,6 +380,90 @@
         let upgradeMode = false;
         let originalPrice = 0;
 
+        // 统一的签名提取 + 校验（升级导入 / 管理员验证台共用）
+        function extractSignatureBase64(text) {
+            if (!text) return null;
+            // 兼容：有些平台复制会丢掉开头的 "#"
+            const patterns = [
+                /(?:^|\n)\s*#?\s*校验签名\s*[:：]\s*([A-Za-z0-9+/=]+)\s*(?:\n|$)/,
+                /校验签名\s*[:：]\s*([A-Za-z0-9+/=]+)/,
+            ];
+            for (const re of patterns) {
+                const m = text.match(re);
+                if (m && m[1]) return m[1];
+            }
+            return null;
+        }
+
+        function decodeAndValidateSignData(yaml) {
+            const b64 = extractSignatureBase64(yaml);
+            if (!b64) {
+                const err = new Error("SIGNATURE_NOT_FOUND");
+                err.code = "SIGNATURE_NOT_FOUND";
+                throw err;
+            }
+
+            // 清理掉复制过程中可能混入的空白/不可见字符
+            const cleaned = b64.replace(/[^A-Za-z0-9+/=]/g, "");
+
+            let signData;
+            try {
+                signData = JSON.parse(decodeURIComponent(escape(atob(cleaned))));
+            } catch (e) {
+                const err = new Error("SIGNATURE_DECODE_FAILED");
+                err.code = "SIGNATURE_DECODE_FAILED";
+                throw err;
+            }
+
+            if (!signData || typeof signData !== "object") {
+                const err = new Error("SIGNATURE_INVALID_JSON");
+                err.code = "SIGNATURE_INVALID_JSON";
+                throw err;
+            }
+
+            if (signData.salt !== SECRET_SALT) {
+                const err = new Error("INVALID_SALT");
+                err.code = "INVALID_SALT";
+                throw err;
+            }
+
+            const allowedSlots = ['主手', '副手', '头盔', '胸甲', '护腿', '靴子'];
+            if (!allowedSlots.includes(signData.s)) {
+                const err = new Error("INVALID_SLOT");
+                err.code = "INVALID_SLOT";
+                throw err;
+            }
+
+            const pNum = Number(signData.p);
+            if (!Number.isFinite(pNum) || pNum < 0) {
+                const err = new Error("INVALID_PRICE");
+                err.code = "INVALID_PRICE";
+                throw err;
+            }
+
+            // a: 属性表（可为空）
+            if (signData.a != null && (typeof signData.a !== "object" || Array.isArray(signData.a))) {
+                const err = new Error("INVALID_ATTRS");
+                err.code = "INVALID_ATTRS";
+                throw err;
+            }
+
+            const sanitizedAttrs = {};
+            if (signData.a) {
+                for (const [id, val] of Object.entries(signData.a)) {
+                    const n = Number(val);
+                    if (!Number.isFinite(n) || n < 0 || n > ATTR_INPUT_MAX) {
+                        const err = new Error("INVALID_ATTR_VALUE");
+                        err.code = "INVALID_ATTR_VALUE";
+                        throw err;
+                    }
+                    sanitizedAttrs[id] = n;
+                }
+            }
+
+            return { ...signData, p: pNum, a: sanitizedAttrs };
+        }
+
         function toggleUpgradePanel() {
             const panel = document.getElementById('upgradeInputPanel');
             const icon = document.getElementById('upgradeToggleIcon');
@@ -401,18 +485,8 @@
                 return;
             }
 
-            const signMatch = yaml.match(/# 校验签名: (.+)/);
-            if (!signMatch) {
-                msgDiv.innerHTML = "<span style='color: #ef4444;'>无效的配置：找不到签名，无法验证原价！</span>";
-                return;
-            }
-
             try {
-                const signData = JSON.parse(decodeURIComponent(escape(atob(signMatch[1]))));
-                
-                if (signData.salt !== SECRET_SALT) {
-                    throw new Error("Invalid Salt");
-                }
+                const signData = decodeAndValidateSignData(yaml);
 
                 // 1. 恢复数据
                 document.getElementById('itemSlot').value = signData.s;
@@ -431,7 +505,7 @@
 
                 // 2. 开启升级模式
                 upgradeMode = true;
-                originalPrice = parseInt(signData.p);
+                originalPrice = parseInt(String(signData.p), 10);
                 
                 msgDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 加载成功！原价: ${originalPrice} RMB。请在下方修改属性，差价将自动计算。</span>`;
                 
@@ -440,7 +514,13 @@
 
             } catch (e) {
                 console.error(e);
-                msgDiv.innerHTML = "<span style='color: #ef4444;'>配置解析失败，可能已被篡改！</span>";
+                if (e && e.code === "SIGNATURE_NOT_FOUND") {
+                    msgDiv.innerHTML = "<span style='color: #ef4444;'>无效的配置：未找到“校验签名”。请粘贴包含签名行的完整配置（部分平台复制会丢失 # 号，建议从纯文本/代码块复制）。</span>";
+                } else if (e && e.code === "INVALID_SALT") {
+                    msgDiv.innerHTML = "<span style='color: #ef4444;'>无效的配置：签名不匹配（可能来自别的版本或被篡改）。</span>";
+                } else {
+                    msgDiv.innerHTML = "<span style='color: #ef4444;'>配置解析失败，可能已被篡改或复制不完整！</span>";
+                }
             }
         }
 
@@ -997,21 +1077,8 @@
                 return;
             }
 
-            // 提取签名 (Base64)
-            const signMatch = yaml.match(/# 校验签名: (.+)/);
-            if (!signMatch) {
-                resultDiv.innerHTML = "<span style='color: #ef4444;'><svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' style='vertical-align: text-bottom; margin-right: 4px;'><line x1='18' y1='6' x2='6' y2='18'></line><line x1='6' y1='6' x2='18' y2='18'></line></svg> 错误：未找到校验签名，可能是伪造或旧版本配置！</span>";
-                return;
-            }
-
             try {
-                // 解码签名 (修复：atob 后需要 decodeURIComponent)
-                const signData = JSON.parse(decodeURIComponent(escape(atob(signMatch[1]))));
-                
-                // 验证盐值 (防止玩家自己编造 JSON 结构)
-                if (signData.salt !== SECRET_SALT) {
-                    throw new Error("Invalid Salt");
-                }
+                const signData = decodeAndValidateSignData(yaml);
 
                 // 恢复数据到界面
                 // 1. 恢复部位 (必须先恢复部位，否则 updateVisibleAttributes 会隐藏属性导致无法赋值)
@@ -1047,7 +1114,13 @@
 
             } catch (e) {
                 console.error(e);
-                resultDiv.innerHTML = "<span style='color: #ef4444;'><svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' style='vertical-align: text-bottom; margin-right: 4px;'><line x1='18' y1='6' x2='6' y2='18'></line><line x1='6' y1='6' x2='18' y2='18'></line></svg> 错误：签名解析失败，配置可能已损坏！</span>";
+                if (e && e.code === "SIGNATURE_NOT_FOUND") {
+                    resultDiv.innerHTML = "<span style='color: #ef4444;'><svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' style='vertical-align: text-bottom; margin-right: 4px;'><line x1='18' y1='6' x2='6' y2='18'></line><line x1='6' y1='6' x2='18' y2='18'></line></svg> 错误：未找到“校验签名”。请粘贴包含签名行的完整配置（若从渲染后的 Markdown 复制，可能丢失 # 号）。</span>";
+                } else if (e && e.code === "INVALID_SALT") {
+                    resultDiv.innerHTML = "<span style='color: #ef4444;'><svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' style='vertical-align: text-bottom; margin-right: 4px;'><line x1='18' y1='6' x2='6' y2='18'></line><line x1='6' y1='6' x2='18' y2='18'></line></svg> 错误：签名不匹配（可能是伪造/旧版本/被篡改）。</span>";
+                } else {
+                    resultDiv.innerHTML = "<span style='color: #ef4444;'><svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' style='vertical-align: text-bottom; margin-right: 4px;'><line x1='18' y1='6' x2='6' y2='18'></line><line x1='6' y1='6' x2='18' y2='18'></line></svg> 错误：签名解析失败，配置可能已损坏！</span>";
+                }
             }
         }
 
