@@ -944,10 +944,6 @@
             'ap_restore',           // 生命恢复
         ]);
 
-        // 区间“宽度惩罚”倍率：额外费用 = 区间宽度 * costFactor * 该倍率
-        // 例：伤害 0-10000：均值 5000 -> 100 RMB；宽度 10000 -> 200 RMB；合计 ~300 RMB（未触发软上限）
-        const RANGE_WIDTH_PENALTY_MULTIPLIER = 1.0;
-
         // 平滑递增的“进阶定价”曲线（无阈值、全程递增且越高越贵）
         // cost = val * costFactor * (1 + (val / curveRef) ^ gamma)
         // - val 很小时≈线性
@@ -968,6 +964,33 @@
             const gg = Number.isFinite(g) && g > 0 ? g : 1;
             const x = v / r;
             return v * k * (1 + Math.pow(x, gg));
+        }
+
+        // 区间定价（科学版）：把区间看作均匀分布 V ~ U(a,b)，按期望价格 E[cost(V)] 计费
+        // 对当前曲线：cost(v)=k*(v + v^(gamma+1)/ref^gamma)
+        function progressiveAttrExpectedCostUniform(minVal, maxVal, costFactor, curveRef, gamma = PROGRESSIVE_PRICE_GAMMA) {
+            const a = Number(minVal);
+            const b = Number(maxVal);
+            const k = Number(costFactor);
+            const ref = Number(curveRef);
+            const g = Number(gamma);
+            if (!(Number.isFinite(a) && Number.isFinite(b) && a >= 0 && b >= a)) return 0;
+            if (!(Number.isFinite(k) && k > 0)) return 0;
+            const r = Number.isFinite(ref) && ref > 0 ? ref : DEFAULT_CURVE_REF_FLAT;
+            const gg = Number.isFinite(g) && g > 0 ? g : 1;
+            if (a === b) return progressiveAttrCost(a, k, r, gg);
+
+            // E[V]
+            const mean = (a + b) / 2;
+
+            // E[V^(gg+1)] for uniform: (b^(p+1)-a^(p+1))/((p+1)(b-a)), where p = gg+1
+            const p = gg + 1;
+            const denom = (p + 1) * (b - a);
+            if (!(Number.isFinite(denom) && denom > 0)) return progressiveAttrCost(mean, k, r, gg);
+            const evPow = (Math.pow(b, p + 1) - Math.pow(a, p + 1)) / denom;
+
+            // k*(E[V] + E[V^(gg+1)]/r^gg)
+            return k * (mean + evPow / Math.pow(r, gg));
         }
 
         function formatAttrNumber(n) {
@@ -1252,17 +1275,14 @@
                     const isPercent = input.dataset.isPercent === 'true';
                     const fallbackRef = isPercent ? DEFAULT_CURVE_REF_PERCENT : DEFAULT_CURVE_REF_FLAT;
                     
-                    // 核心定价算法：平滑递增（无“超过 limit 才惩罚”的分段）
-                    cost = progressiveAttrCost(val, costFactor, Number.isFinite(curveRef) && curveRef > 0 ? curveRef : fallbackRef);
+                    const refToUse = Number.isFinite(curveRef) && curveRef > 0 ? curveRef : fallbackRef;
 
-                    // 区间宽度惩罚（只对“允许区间”的属性生效；不参与进阶曲线计算）
+                    // 核心定价算法：平滑递增（无阈值）
                     if (parsed.ok && parsed.kind === 'range') {
-                        const minV = Number(parsed.min);
-                        const maxV = Number(parsed.max);
-                        if (Number.isFinite(minV) && Number.isFinite(maxV) && maxV > minV) {
-                            const width = maxV - minV;
-                            cost += width * costFactor * RANGE_WIDTH_PENALTY_MULTIPLIER;
-                        }
+                        // 区间按期望价格计费（更科学，天然包含“区间越宽越贵”的效应）
+                        cost = progressiveAttrExpectedCostUniform(parsed.min, parsed.max, costFactor, refToUse);
+                    } else {
+                        cost = progressiveAttrCost(val, costFactor, refToUse);
                     }
                     
                     // 应用部位倍率
