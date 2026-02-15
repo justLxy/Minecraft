@@ -593,12 +593,7 @@
 
             try {
                 // 仅支持“无签名 MythicMobs 配置”导入（不兼容旧流程）
-                if (extractSignatureBase64(yaml)) {
-                    msgDiv.innerHTML =
-                        "<span style='color: #ef4444;'>导入失败：升级导入只接受 MythicMobs 物品配置（无签名）。请粘贴你实际放进 MythicMobs 的那段配置（包含 Lore 列表），不要粘贴玩家订单。</span>";
-                    return;
-                }
-
+                // 注意：即使文本里包含 `# 校验签名:`，这里也会忽略签名，只按 Lore 解析为准。
                 const parsed = parseUnsignedConfigForUpgrade(yaml);
                 const slot = parsed.slot;
                 const attrs = parsed.attrs || {};
