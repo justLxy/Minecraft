@@ -291,7 +291,7 @@
                 </div>
                 <div class="form-group">
                     <label>装备类型 (材质ID)</label>
-                    <input type="text" id="itemMaterial" list="material_list" placeholder="输入材质英文名 (如 DIAMOND_SWORD)" oninput="updatePreview()" value="WOODEN_SWORD" required>
+                    <input type="text" id="itemMaterial" list="material_list" placeholder="输入材质英文名 (如 DIAMOND_SWORD)" oninput="syncSlotFromMaterial(); updatePreview()" value="WOODEN_SWORD" required>
                     <datalist id="material_list">
                         <!-- 武器 -->
                         <option value="WOODEN_SWORD">木剑</option>
@@ -920,6 +920,24 @@
         }
 
         // 监听装备部位变化
+        // 根据装备类型 (材质ID) 仅对防具自动设置装备部位；主手/副手不自动改，由玩家自选
+        function syncSlotFromMaterial() {
+            const materialEl = document.getElementById('itemMaterial');
+            const slotEl = document.getElementById('itemSlot');
+            if (!materialEl || !slotEl) return;
+            const raw = (materialEl.value || '').trim().toUpperCase();
+            if (!raw) return;
+            let slot = '';
+            if (raw.endsWith('_HELMET') || raw === 'HELMET') slot = '头盔';
+            else if (raw.endsWith('_CHESTPLATE') || raw === 'CHESTPLATE') slot = '胸甲';
+            else if (raw.endsWith('_LEGGINGS') || raw === 'LEGGINGS') slot = '护腿';
+            else if (raw.endsWith('_BOOTS') || raw === 'BOOTS') slot = '靴子';
+            if (slot && slotEl.value !== slot) {
+                slotEl.value = slot;
+                updateVisibleAttributes();
+            }
+        }
+
         function updateVisibleAttributes() {
             const slot = document.getElementById('itemSlot').value;
             let currentType = 'weapon'; // 默认为武器类型
