@@ -359,12 +359,8 @@
     </div>
 
     <script>
-        // 简单的防篡改密钥 (前端可见，仅防小白)
-        const SECRET_SALT = "MemoryAgent_Weapon_2026";
+        const SECRET_SALT = "记忆代理人";
 
-        // 管理员模式激活逻辑
-        // 1. URL参数: ?admin=true
-        // 2. 连续点击标题 5 次
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('admin') === 'true') {
             document.getElementById('adminPanel').style.display = 'block';
