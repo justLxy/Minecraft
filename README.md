@@ -36,8 +36,10 @@
 
 ## 一键生成混淆/发布版
 
-> 目标：把 `index.dev.html` 生成新的发布文件 `index.html`（压缩 + JS/CSS 最小化）。
+> 目标：把 `index.dev.html` 生成新的发布文件 `index.html`（**JS 混淆 + HTML/CSS 压缩**）。
+
+- 混淆使用 `javascript-obfuscator`，压缩使用 `html-minifier-terser`（首次运行会通过 `npx` 自动下载所需工具）
 
 ```bash
-npx --yes html-minifier-terser --collapse-whitespace --remove-comments --minify-css true --minify-js true -o index.html index.dev.html
+node tools/build-obfuscate.cjs
 ```
