@@ -1007,6 +1007,13 @@
                 return { ok: false, kind: 'invalid', avg: 0, min: null, max: null, display: s0 };
             }
 
+            // 不允许反向区间：必须 左值 <= 右值
+            // （否则会导致玩家用 2000-1000 这种写法产生歧义）
+            if (a > b) {
+                return { ok: false, kind: 'invalid', avg: 0, min: null, max: null, display: s0 };
+            }
+
+            // 注意：定价用 min/max，但输入框展示不要在输入中途交换两端（避免 9000-1 立刻变 1-9000）
             const minV = Math.min(a, b);
             const maxV = Math.max(a, b);
             const avg = (minV + maxV) / 2;
@@ -1014,9 +1021,12 @@
                 ok: true,
                 kind: 'range',
                 avg,
+                a,
+                b,
                 min: minV,
                 max: maxV,
-                display: `${formatAttrNumber(minV)}-${formatAttrNumber(maxV)}`
+                display: `${formatAttrNumber(a)}-${formatAttrNumber(b)}`,
+                canonicalDisplay: `${formatAttrNumber(minV)}-${formatAttrNumber(maxV)}`
             };
         }
 
@@ -1058,8 +1068,9 @@
             }
 
             if (parsed.kind === 'range') {
-                let a = parsed.min;
-                let b = parsed.max;
+                // 保持用户输入顺序（不交换两端），但仍会做裁剪
+                let a = parsed.a;
+                let b = parsed.b;
                 if (!Number.isFinite(a) || !Number.isFinite(b)) return;
                 a = Math.max(0, Math.min(a, ATTR_INPUT_MAX));
                 b = Math.max(0, Math.min(b, ATTR_INPUT_MAX));
