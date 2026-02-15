@@ -341,9 +341,9 @@
                         <option value="主手">主手</option>
                         <option value="副手">副手</option>
                         <option value="头盔">头盔</option>
-                        <option value="胸甲">胸甲</option>
-                        <option value="护腿">护腿</option>
-                        <option value="靴子">靴子</option>
+                        <option value="衣服">衣服</option>
+                        <option value="裤子">裤子</option>
+                        <option value="鞋子">鞋子</option>
                     </select>
                 </div>
             </div>
@@ -436,7 +436,7 @@
                 throw err;
             }
 
-            const allowedSlots = ['主手', '副手', '头盔', '胸甲', '护腿', '靴子'];
+            const allowedSlots = ['主手', '副手', '头盔', '衣服', '裤子', '鞋子'];
             if (!allowedSlots.includes(signData.s)) {
                 const err = new Error("INVALID_SLOT");
                 err.code = "INVALID_SLOT";
@@ -719,7 +719,7 @@
                 const slot = parsed.slot;
                 const attrs = parsed.attrs || {};
 
-                const allowedSlots = ['主手', '副手', '头盔', '胸甲', '护腿', '靴子'];
+                const allowedSlots = ['主手', '副手', '头盔', '衣服', '裤子', '鞋子'];
                 if (!slot || !allowedSlots.includes(slot)) {
                     msgDiv.innerHTML = "<span style='color: #ef4444;'>导入失败：未能从配置中识别“装备类型”。请确保 Lore 中包含类似 `&e装备类型: 主手` 的一行。</span>";
                     return;
@@ -1198,9 +1198,9 @@
             if (!raw) return;
             let slot = '';
             if (raw.endsWith('_HELMET') || raw === 'HELMET') slot = '头盔';
-            else if (raw.endsWith('_CHESTPLATE') || raw === 'CHESTPLATE') slot = '胸甲';
-            else if (raw.endsWith('_LEGGINGS') || raw === 'LEGGINGS') slot = '护腿';
-            else if (raw.endsWith('_BOOTS') || raw === 'BOOTS') slot = '靴子';
+            else if (raw.endsWith('_CHESTPLATE') || raw === 'CHESTPLATE') slot = '衣服';
+            else if (raw.endsWith('_LEGGINGS') || raw === 'LEGGINGS') slot = '裤子';
+            else if (raw.endsWith('_BOOTS') || raw === 'BOOTS') slot = '鞋子';
             if (slot && slotEl.value !== slot) {
                 slotEl.value = slot;
                 updateVisibleAttributes();
@@ -1211,7 +1211,7 @@
             const slot = document.getElementById('itemSlot').value;
             let currentType = 'weapon'; // 默认为武器类型
 
-            if (['头盔', '胸甲', '护腿', '靴子'].includes(slot)) {
+            if (['头盔', '衣服', '裤子', '鞋子'].includes(slot)) {
                 currentType = 'armor';
             }
 
