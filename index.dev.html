@@ -496,6 +496,94 @@
             return { ...signData, m: mode, op: opNum, fp: fpNum, p: pNum, a: sanitizedAttrs };
         }
 
+        // 从 MythicMobs 配置（无签名）中解析装备类型 + 属性
+        function stripMcFormatCodes(s) {
+            if (!s) return '';
+            return String(s)
+                .replace(/&[0-9a-fk-or]/gi, '')   // &a &l ...
+                .replace(/§[0-9a-fk-or]/gi, '')   // §a §l ...
+                .trim();
+        }
+
+        function parseLoreLinesFromYaml(yaml) {
+            const lines = String(yaml || '').split(/\r?\n/);
+            const lore = [];
+            let inLore = false;
+            let loreIndent = null;
+
+            for (const line of lines) {
+                if (!inLore) {
+                    if (/^\s*Lore\s*:\s*$/.test(line)) {
+                        inLore = true;
+                        loreIndent = null;
+                    }
+                    continue;
+                }
+
+                // 结束条件：缩进回退到 Lore 之前（或者进入 Options 等）
+                if (/^\s*\S/.test(line) && !/^\s*-\s*/.test(line)) break;
+                if (/^\s*Options\s*:\s*$/.test(line)) break;
+
+                const m = line.match(/^(\s*)-\s*(.*)\s*$/);
+                if (!m) continue;
+
+                if (loreIndent == null) loreIndent = m[1].length;
+                if (m[1].length < loreIndent) break;
+
+                let raw = m[2] || '';
+                // 去掉包裹引号
+                if ((raw.startsWith("'") && raw.endsWith("'")) || (raw.startsWith('"') && raw.endsWith('"'))) {
+                    raw = raw.slice(1, -1);
+                }
+                lore.push(raw);
+            }
+            return lore;
+        }
+
+        function buildLabelToAttrIdMap() {
+            const map = new Map();
+            Object.values(attributesDB).forEach(group => {
+                group.forEach(attr => {
+                    if (attr && attr.label) map.set(String(attr.label).trim(), attr.id);
+                });
+            });
+            // 兼容：伤害在 lore 里用 “伤害”
+            map.set('伤害', 'ap_attack');
+            return map;
+        }
+
+        function parseUnsignedConfigForUpgrade(yaml) {
+            const loreLinesRaw = parseLoreLinesFromYaml(yaml);
+            const lore = loreLinesRaw.map(stripMcFormatCodes).filter(Boolean);
+
+            // 解析装备类型
+            let slot = null;
+            for (const l of lore) {
+                const m = l.match(/装备类型\s*[:：]\s*(.+)\s*$/);
+                if (m) {
+                    slot = m[1].trim();
+                    break;
+                }
+            }
+
+            const labelToId = buildLabelToAttrIdMap();
+            const attrs = {};
+
+            // 解析属性：形如 “PVP攻击: +2000” / “暴击几率: +10%”
+            for (const l of lore) {
+                const m = l.match(/^\s*([^:：]+)\s*[:：]\s*\+?\s*([0-9]+(?:\.[0-9]+)?)\s*(%)?\s*$/);
+                if (!m) continue;
+                const label = m[1].trim();
+                const val = Number(m[2]);
+                if (!Number.isFinite(val)) continue;
+                const id = labelToId.get(label);
+                if (!id) continue;
+                attrs[id] = Math.max(0, Math.min(val, ATTR_INPUT_MAX));
+            }
+
+            return { slot, attrs };
+        }
+
         function toggleUpgradePanel() {
             const panel = document.getElementById('upgradeInputPanel');
             const icon = document.getElementById('upgradeToggleIcon');
@@ -518,53 +606,70 @@
             }
 
             try {
-                const signData = decodeAndValidateSignData(yaml);
-                const orderInfo = extractOrderInfo(yaml);
+                // 支持两种导入：
+                // 1) 无签名 MythicMobs 配置：从 Lore 解析 slot/属性，并计算“原始总价”
+                // 2) 带签名配置：优先用签名的 slot/属性
 
-                // 识别“升级订单(补价)”时，原价应从标题或签名 op 取，而不是 signData.p
-                let parsedOriginalPrice = null;
-                if (signData.m === 'upgrade' && Number.isFinite(signData.op)) {
-                    parsedOriginalPrice = signData.op;
-                } else if (orderInfo.mode === 'upgrade' && Number.isFinite(orderInfo.originalPrice)) {
-                    parsedOriginalPrice = orderInfo.originalPrice;
+                let slot = null;
+                let attrs = {};
+                let note = "";
+
+                const b64 = extractSignatureBase64(yaml);
+                if (b64) {
+                    const signData = decodeAndValidateSignData(yaml);
+                    slot = signData.s;
+                    attrs = signData.a || {};
+                    // 若是升级订单签名，这里的 p 可能是补价，不适合作为“升级基底”
+                    if (signData.m === 'upgrade') {
+                        note = "<br><span style='color:#a3a3a3;font-size:0.8rem'>(提示：你粘贴的是“升级订单(补价)”配置。用于升级基底时更推荐粘贴 MythicMobs 里那份无签名的物品配置)</span>";
+                    }
+                } else {
+                    const parsed = parseUnsignedConfigForUpgrade(yaml);
+                    slot = parsed.slot;
+                    attrs = parsed.attrs || {};
                 }
 
-                // 1. 恢复数据
-                document.getElementById('itemSlot').value = signData.s;
-                updateVisibleAttributes(); 
+                const allowedSlots = ['主手', '副手', '头盔', '胸甲', '护腿', '靴子'];
+                if (!slot || !allowedSlots.includes(slot)) {
+                    msgDiv.innerHTML = "<span style='color: #ef4444;'>导入失败：未能从配置中识别“装备类型”。请确保 Lore 中包含类似 `&e装备类型: 主手` 的一行。</span>";
+                    return;
+                }
+
+                // 1) 恢复到界面
+                document.getElementById('itemSlot').value = slot;
+                updateVisibleAttributes();
 
                 // 清空当前
                 document.querySelectorAll('#attributes-container input').forEach(i => i.value = '');
 
-                // 填入旧数据
-                if (signData.a) {
-                    for (const [id, val] of Object.entries(signData.a)) {
+                // 填入属性
+                if (attrs) {
+                    for (const [id, val] of Object.entries(attrs)) {
                         const input = document.getElementById(id);
                         if (input) input.value = val;
                     }
                 }
 
-                // 2. 开启升级模式
+                // 2) 计算“原始总价”作为升级基底
+                const prevUpgradeMode = upgradeMode;
+                const prevOriginalPrice = originalPrice;
+                upgradeMode = false;
+                originalPrice = 0;
+                const baseFullPrice = calculatePrice();
+                upgradeMode = prevUpgradeMode;
+                originalPrice = prevOriginalPrice;
+
                 upgradeMode = true;
-                originalPrice = parseInt(String(parsedOriginalPrice ?? signData.p), 10);
-                
-                const extraNote = (orderInfo.mode === 'upgrade' || signData.m === 'upgrade')
-                    ? "<br><span style='color:#a3a3a3;font-size:0.8rem'>(检测到你粘贴的是“升级订单(补价)”，已按其中的原价导入；更推荐粘贴你原始的定制订单配置作为升级基底)</span>"
-                    : "";
-                msgDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 加载成功！原价: ${originalPrice} RMB。请在下方修改属性，差价将自动计算。</span>${extraNote}`;
-                
-                // 3. 触发更新
+                originalPrice = baseFullPrice;
+
+                msgDiv.innerHTML =
+                    `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 加载成功！原始总价: ${originalPrice} RMB。请在下方修改属性，系统将自动计算补差价。</span>${note}`;
+
                 updatePreview();
 
             } catch (e) {
                 console.error(e);
-                if (e && e.code === "SIGNATURE_NOT_FOUND") {
-                    msgDiv.innerHTML = "<span style='color: #ef4444;'>无效的配置：未找到“校验签名”。请粘贴包含签名行的完整配置（部分平台复制会丢失 # 号，建议从纯文本/代码块复制）。</span>";
-                } else if (e && e.code === "INVALID_SALT") {
-                    msgDiv.innerHTML = "<span style='color: #ef4444;'>无效的配置：签名不匹配（可能来自别的版本或被篡改）。</span>";
-                } else {
-                    msgDiv.innerHTML = "<span style='color: #ef4444;'>配置解析失败，可能已被篡改或复制不完整！</span>";
-                }
+                msgDiv.innerHTML = "<span style='color: #ef4444;'>导入失败：配置解析异常。请确认你粘贴的是 MythicMobs 物品配置（含 Lore 列表），或是包含“校验签名”的完整配置。</span>";
             }
         }
 
