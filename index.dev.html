@@ -874,7 +874,7 @@
         // costFactor: 价格系数
         // isPercent: 是否为百分比属性
         // baseCost: 开启该属性的基础费用
-        // limit: 软上限，超过此值价格暴涨
+        // limit: 曲线参考点 curveRef（用于进阶定价曲线的缩放；不再是“超过才惩罚”的阈值）
         // 定义属性配置
         // allowed: ['weapon', 'armor', 'all'] - 允许的装备类型
         const attributesDB = {
