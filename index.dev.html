@@ -955,7 +955,7 @@
         // 组合强度加价（防止“先做强属性，后补便宜属性”）
         // 最终单属性价格 = 基础曲线价 * (1 + alpha * 其他属性强度总和)
         const COMBO_PRICE_ALPHA = 0.01;
-        const COMBO_INTENSITY_CAP_PER_ATTR = 20;
+        const COMBO_INTENSITY_CAP_PER_ATTR = 10;
         const COMBO_INTENSITY_CAP_TOTAL = 100;
 
         function progressiveAttrCost(val, costFactor, curveRef, gamma = PROGRESSIVE_PRICE_GAMMA) {
