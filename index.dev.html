@@ -879,30 +879,30 @@
         // allowed: ['weapon', 'armor', 'all'] - 允许的装备类型
         const attributesDB = {
             attack: [
-                { id: 'ap_attack', name: '伤害', color: '&b', costFactor: 0.05, isPercent: false, limit: 8000, label: '伤害', allowed: ['weapon'] },
-                { id: 'ap_pvp_attack', name: 'PVP攻击', color: '&b', costFactor: 0.02, isPercent: false, limit: 8000, label: 'PVP攻击', allowed: ['weapon'] },
-                { id: 'ap_pve_attack', name: 'PVE攻击', color: '&b', costFactor: 0.03, isPercent: false, limit: 8000, label: 'PVE攻击', allowed: ['weapon'] },
-                { id: 'ap_real_attack', name: '真实攻击', color: '&b', costFactor: 0.1, isPercent: false, limit: 8000, label: '真实攻击', allowed: ['weapon'] },
-                { id: 'ap_fire', name: '燃烧几率', color: '&c', costFactor: 1, isPercent: true, limit: 60, label: '燃烧几率', allowed: ['weapon'] },
-                { id: 'ap_fire_damage', name: '火焰攻击', color: '&c', costFactor: 0.025, isPercent: false, limit: 8000, label: '火焰攻击', allowed: ['weapon'] },
-                { id: 'ap_crit', name: '暴击几率', color: '&c', costFactor: 1, isPercent: true, limit: 60, label: '暴击几率', allowed: ['weapon'] },
+                { id: 'ap_attack', name: '伤害', color: '&b', costFactor: 0.03, isPercent: false, limit: 10000, label: '伤害', allowed: ['weapon'] },
+                { id: 'ap_pvp_attack', name: 'PVP攻击', color: '&b', costFactor: 0.02, isPercent: false, limit: 10000, label: 'PVP攻击', allowed: ['weapon'] },
+                { id: 'ap_pve_attack', name: 'PVE攻击', color: '&b', costFactor: 0.02, isPercent: false, limit: 10000, label: 'PVE攻击', allowed: ['weapon'] },
+                { id: 'ap_real_attack', name: '真实攻击', color: '&b', costFactor: 0.06, isPercent: false, limit: 4000, label: '真实攻击', allowed: ['weapon'] },
+                { id: 'ap_fire', name: '燃烧几率', color: '&c', costFactor: 1.5, isPercent: true, limit: 60, label: '燃烧几率', allowed: ['weapon'] },
+                { id: 'ap_fire_damage', name: '火焰攻击', color: '&c', costFactor: 0.02, isPercent: false, limit: 4000, label: '火焰攻击', allowed: ['weapon'] },
+                { id: 'ap_crit', name: '暴击几率', color: '&c', costFactor: 3, isPercent: true, limit: 60, label: '暴击几率', allowed: ['weapon'] },
                 { id: 'ap_crit_rate', name: '暴击倍率', color: '&c', costFactor: 2, isPercent: true, limit: 100, label: '暴击倍率', allowed: ['weapon'] },
-                { id: 'ap_vampire', name: '吸血几率', color: '&c', costFactor: 1, isPercent: true, limit: 60, label: '吸血几率', allowed: ['weapon'] },
+                { id: 'ap_vampire', name: '吸血几率', color: '&c', costFactor: 2.5, isPercent: true, limit: 60, label: '吸血几率', allowed: ['weapon'] },
                 { id: 'ap_vampire_rate', name: '吸血倍率', color: '&c', costFactor: 2, isPercent: true, limit: 100, label: '吸血倍率', allowed: ['weapon'] },
                 { id: 'ap_hit', name: '命中几率', color: '&6', costFactor: 1, isPercent: true, limit: 100, label: '命中几率', allowed: ['weapon'] },
                 { id: 'ap_frozen', name: '冰冻几率', color: '&3', costFactor: 1, isPercent: true, limit: 100, label: '冰冻几率', allowed: ['weapon'] },
                 { id: 'ap_frozen_intensity', name: '冰冻强度', color: '&3', costFactor: 1, isPercent: true, limit: 100, label: '冰冻强度', allowed: ['weapon'] },
                 { id: 'ap_lightning', name: '雷击几率', color: '&f', costFactor: 1, isPercent: true, limit: 100, label: '雷击几率', allowed: ['weapon'] },
-                { id: 'ap_lightning_damage', name: '雷电攻击', color: '&f', costFactor: 0.025, isPercent: false, limit: 8000, label: '雷电攻击', allowed: ['weapon'] },
+                { id: 'ap_lightning_damage', name: '雷电攻击', color: '&f', costFactor: 0.02, isPercent: false, limit: 4000, label: '雷电攻击', allowed: ['weapon'] },
                 { id: 'ap_sunder_armor', name: '破甲几率', color: '&3', costFactor: 1, isPercent: true, limit: 60, label: '破甲几率', allowed: ['weapon'] },
                 { id: 'ap_see_through', name: '护甲穿透', color: '&6', costFactor: 1, isPercent: true, limit: 100, label: '护甲穿透', allowed: ['weapon'] },
                 { id: 'ap_break_shield', name: '破盾几率', color: '&3', costFactor: 1, isPercent: true, limit: 60, label: '破盾几率', allowed: ['weapon'] },
             ],
             defense: [
-                { id: 'ap_armor', name: '护甲值', color: '&b', costFactor: 5, isPercent: true, limit: 60, label: '护甲值', allowed: ['armor'] },
-                { id: 'ap_defense', name: '防御', color: '&b', costFactor: 0.05, isPercent: false, limit: 8000, label: '防御', allowed: ['armor'] },
-                { id: 'ap_pvp_defense', name: 'PVP减伤', color: '&b', costFactor: 0.02, isPercent: false, limit: 8000, label: 'PVP减伤', allowed: ['armor'] },
-                { id: 'ap_pve_defense', name: 'PVE减伤', color: '&b', costFactor: 0.03, isPercent: false, limit: 8000, label: 'PVE减伤', allowed: ['armor'] },
+                { id: 'ap_armor', name: '护甲值', color: '&b', costFactor: 4, isPercent: true, limit: 60, label: '护甲值', allowed: ['armor'] },
+                { id: 'ap_defense', name: '防御', color: '&b', costFactor: 0.025, isPercent: false, limit: 10000, label: '防御', allowed: ['armor'] },
+                { id: 'ap_pvp_defense', name: 'PVP减伤', color: '&b', costFactor: 0.02, isPercent: false, limit: 10000, label: 'PVP减伤', allowed: ['armor'] },
+                { id: 'ap_pve_defense', name: 'PVE减伤', color: '&b', costFactor: 0.02, isPercent: false, limit: 10000, label: 'PVE减伤', allowed: ['armor'] },
                 { id: 'ap_crit_damage_resist', name: '暴伤抵抗', color: '&c', costFactor: 1, isPercent: true, limit: 100, label: '暴伤抵抗', allowed: ['armor'] },
                 { id: 'ap_crit_resist', name: '暴击抵抗', color: '&c', costFactor: 1, isPercent: true, limit: 100, label: '暴击抵抗', allowed: ['armor'] },
                 { id: 'ap_crit_dodge', name: '暴击闪避', color: '&c', costFactor: 1, isPercent: true, limit: 100, label: '暴击闪避', allowed: ['armor'] },
@@ -915,8 +915,8 @@
                 { id: 'ap_remote_immune', name: '箭伤免疫率', color: '&6', costFactor: 1, isPercent: true, limit: 100, label: '箭伤免疫率', allowed: ['armor'] },
             ],
             other: [
-                { id: 'ap_health', name: '生命力', color: '&b', costFactor: 0.02, isPercent: false, limit: 10000, label: '生命力', allowed: ['armor'] },
-                { id: 'ap_restore', name: '生命恢复', color: '&d', costFactor: 0.02, isPercent: false, limit: 8000, label: '生命恢复', allowed: ['armor'] },
+                { id: 'ap_health', name: '生命力', color: '&b', costFactor: 0.007, isPercent: false, limit: 50000, label: '生命力', allowed: ['armor'] },
+                { id: 'ap_restore', name: '生命恢复', color: '&d', costFactor: 0.018, isPercent: false, limit: 8000, label: '生命恢复', allowed: ['armor'] },
                 { id: 'ap_restore_ratio', name: '百分比恢复', color: '&d', costFactor: 3, isPercent: true, limit: 60, label: '百分比恢复', allowed: ['armor'] },
                 { id: 'ap_accumulate_addition', name: '蓄力加成', color: '&6', costFactor: 1, isPercent: true, limit: 100, label: '蓄力加成', allowed: ['weapon'] },
                 { id: 'ap_accumulate_disturb', name: '蓄力干扰', color: '&6', costFactor: 1, isPercent: true, limit: 100, label: '蓄力干扰', allowed: ['weapon'] },
@@ -954,9 +954,10 @@
         const DEFAULT_CURVE_REF_PERCENT = 50;
         // 组合强度加价（防止“先做强属性，后补便宜属性”）
         // 最终单属性价格 = 基础曲线价 * (1 + alpha * 其他属性强度总和)
-        const COMBO_PRICE_ALPHA = 0.01;
+        const COMBO_PRICE_ALPHA = 0.004;
+        const COMBO_INTENSITY_FREE = 4;
         const COMBO_INTENSITY_CAP_PER_ATTR = 10;
-        const COMBO_INTENSITY_CAP_TOTAL = 100;
+        const COMBO_INTENSITY_CAP_TOTAL = 80;
 
         function progressiveAttrCost(val, costFactor, curveRef, gamma = PROGRESSIVE_PRICE_GAMMA) {
             const v = Number(val);
@@ -1315,7 +1316,9 @@
                 const { input, baseCost, intensity } = item;
                 let finalAttrCost = 0;
                 if (baseCost > 0) {
-                    const otherIntensityRaw = Math.max(totalIntensity - intensity, 0);
+                    // 组合加价：给“多样化的少量副属性”留空间，避免玩家一加词条就被系统惩罚
+                    // 前 COMBO_INTENSITY_FREE 的“其他属性强度”不加价；超过部分再按 alpha 线性加价
+                    const otherIntensityRaw = Math.max(totalIntensity - intensity - COMBO_INTENSITY_FREE, 0);
                     const otherIntensity = Math.min(otherIntensityRaw, COMBO_INTENSITY_CAP_TOTAL);
                     const comboMultiplier = 1 + COMBO_PRICE_ALPHA * otherIntensity;
                     finalAttrCost = baseCost * comboMultiplier;
