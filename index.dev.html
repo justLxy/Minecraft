@@ -952,6 +952,11 @@
         const PROGRESSIVE_PRICE_GAMMA = 1.0;
         const DEFAULT_CURVE_REF_FLAT = 5000;
         const DEFAULT_CURVE_REF_PERCENT = 50;
+        // 组合强度加价（防止“先做强属性，后补便宜属性”）
+        // 最终单属性价格 = 基础曲线价 * (1 + alpha * 其他属性强度总和)
+        const COMBO_PRICE_ALPHA = 0.06;
+        const COMBO_INTENSITY_CAP_PER_ATTR = 2;
+        const COMBO_INTENSITY_CAP_TOTAL = 10;
 
         function progressiveAttrCost(val, costFactor, curveRef, gamma = PROGRESSIVE_PRICE_GAMMA) {
             const v = Number(val);
@@ -991,6 +996,15 @@
 
             // k*(E[V] + E[V^(gg+1)]/r^gg)
             return k * (mean + evPow / Math.pow(r, gg));
+        }
+
+        function normalizedAttrIntensity(avgVal, curveRef) {
+            const v = Number(avgVal);
+            const ref = Number(curveRef);
+            if (!(Number.isFinite(v) && v > 0)) return 0;
+            const r = Number.isFinite(ref) && ref > 0 ? ref : DEFAULT_CURVE_REF_FLAT;
+            const ratio = v / r;
+            return Math.max(0, Math.min(ratio, COMBO_INTENSITY_CAP_PER_ATTR));
         }
 
         function formatAttrNumber(n) {
@@ -1259,6 +1273,7 @@
             }
 
             const inputs = document.querySelectorAll('#attributes-container input');
+            const pricedAttrs = [];
             inputs.forEach(input => {
                 // 如果被隐藏了（display: none），则不计算价格
                 const container = input.closest('.attr-input-group');
@@ -1267,7 +1282,8 @@
                 const allowRange = RANGE_PRICE_ATTR_IDS.has(input.id);
                 const parsed = parseAttrInputValue(input.value, { allowRange });
                 let val = parsed.ok ? Number(parsed.avg) : 0;
-                let cost = 0;
+                let baseCost = 0;
+                let intensity = 0;
                 
                 if (val && val > 0) {
                     const costFactor = parseFloat(input.dataset.cost);
@@ -1280,20 +1296,36 @@
                     // 核心定价算法：平滑递增（无阈值）
                     if (parsed.ok && parsed.kind === 'range') {
                         // 区间按期望价格计费（更科学，天然包含“区间越宽越贵”的效应）
-                        cost = progressiveAttrExpectedCostUniform(parsed.min, parsed.max, costFactor, refToUse);
+                        baseCost = progressiveAttrExpectedCostUniform(parsed.min, parsed.max, costFactor, refToUse);
                     } else {
-                        cost = progressiveAttrCost(val, costFactor, refToUse);
+                        baseCost = progressiveAttrCost(val, costFactor, refToUse);
                     }
+                    intensity = normalizedAttrIntensity(val, refToUse);
                     
                     // 应用部位倍率
-                    cost = cost * slotMultiplier;
+                    baseCost = baseCost * slotMultiplier;
+                }
+                pricedAttrs.push({ input, baseCost, intensity });
+            });
+
+            const totalIntensityRaw = pricedAttrs.reduce((sum, item) => sum + item.intensity, 0);
+            const totalIntensity = Math.min(totalIntensityRaw, COMBO_INTENSITY_CAP_TOTAL);
+
+            pricedAttrs.forEach(item => {
+                const { input, baseCost, intensity } = item;
+                let finalAttrCost = 0;
+                if (baseCost > 0) {
+                    const otherIntensityRaw = Math.max(totalIntensity - intensity, 0);
+                    const otherIntensity = Math.min(otherIntensityRaw, COMBO_INTENSITY_CAP_TOTAL);
+                    const comboMultiplier = 1 + COMBO_PRICE_ALPHA * otherIntensity;
+                    finalAttrCost = baseCost * comboMultiplier;
                 }
 
                 // 更新单个属性的价格显示
                 const priceSpan = document.getElementById(`price-${input.id}`);
                 if (priceSpan) {
-                    if (cost > 0) {
-                        priceSpan.innerText = `+${Math.ceil(cost)}`;
+                    if (finalAttrCost > 0) {
+                        priceSpan.innerText = `+${Math.ceil(finalAttrCost)}`;
                         priceSpan.style.opacity = '1';
                     } else {
                         priceSpan.innerText = '';
@@ -1301,7 +1333,7 @@
                     }
                 }
 
-                totalPrice += cost;
+                totalPrice += finalAttrCost;
             });
 
             // 最低消费 50
