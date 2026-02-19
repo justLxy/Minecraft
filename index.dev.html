@@ -193,6 +193,12 @@
             font-family: 'Press Start 2P', cursive;
         }
 
+        .extra-fee-line {
+            margin-top: -6px;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+
         .mc-tooltip {
             background-color: var(--mc-tooltip-bg);
             border: 3px solid #2a002a;
@@ -363,11 +369,12 @@
         <!-- 右侧：预览与结算 -->
         <div class="preview-panel">
             <div class="price-card">
-                <div class="price-label">定制预估价格</div>
+                <div class="price-label" id="priceLabel">定制预估价格</div>
                 <div class="price-container">
                     <span class="total-price" id="totalPrice">0</span>
                     <span class="currency">RMB</span>
                 </div>
+                <div class="extra-fee-line" id="extraFeeLine" style="display:none;"></div>
             </div>
 
             <div class="mc-tooltip" id="tooltipPreview">
@@ -395,6 +402,8 @@
         // 升级模式状态
         let upgradeMode = false;
         let originalPrice = 0;
+        let upgradeOriginalAttrs = null; // 升级基底属性（避免小升级触发大额追缴）
+        let upgradeOriginalSlot = null;
 
         // 签名提取 + 校验（仅用于“玩家下单/管理员验证”，升级导入不使用签名）
         function extractSignatureBase64(text) {
@@ -457,9 +466,10 @@
                 throw err;
             }
 
-            const sanitizedAttrs = {};
-            if (signData.a) {
-                for (const [id, val] of Object.entries(signData.a)) {
+            function sanitizeAttrMap(rawMap) {
+                const out = {};
+                if (!rawMap) return out;
+                for (const [id, val] of Object.entries(rawMap)) {
                     const allowRange = RANGE_PRICE_ATTR_IDS.has(id);
                     if (allowRange) {
                         const parsed = parseAttrInputValue(val, { allowRange: true });
@@ -484,7 +494,7 @@
                             throw err;
                         }
                         // 为了在管理员验证时可原样回填输入框：区间属性一律存为字符串
-                        sanitizedAttrs[id] = parsed.kind === 'range' ? parsed.display : formatAttrNumber(parsed.avg);
+                        out[id] = parsed.kind === 'range' ? parsed.display : formatAttrNumber(parsed.avg);
                         continue;
                     }
 
@@ -494,9 +504,12 @@
                         err.code = "INVALID_ATTR_VALUE";
                         throw err;
                     }
-                    sanitizedAttrs[id] = n;
+                    out[id] = n;
                 }
+                return out;
             }
+
+            const sanitizedAttrs = sanitizeAttrMap(signData.a);
 
             // 仅支持当前签名结构（不兼容旧结构）
             const mode = signData.m;
@@ -523,7 +536,18 @@
                 }
             }
 
-            return { ...signData, m: mode, op: opNum, fp: fpNum, p: pNum, a: sanitizedAttrs };
+            // oa: 升级模式可携带“原始属性表”，用于验证升级补价（只对新增/提高属性收费）
+            let sanitizedOriginalAttrs = undefined;
+            if (mode === 'upgrade' && signData.oa != null) {
+                if (typeof signData.oa !== "object" || Array.isArray(signData.oa)) {
+                    const err = new Error("INVALID_ORIGINAL_ATTRS");
+                    err.code = "INVALID_ORIGINAL_ATTRS";
+                    throw err;
+                }
+                sanitizedOriginalAttrs = sanitizeAttrMap(signData.oa);
+            }
+
+            return { ...signData, m: mode, op: opNum, fp: fpNum, p: pNum, a: sanitizedAttrs, oa: sanitizedOriginalAttrs };
         }
 
         // 从 MythicMobs 配置（无签名）中解析装备类型 + 属性
@@ -718,6 +742,8 @@
                 const parsed = parseUnsignedConfigForUpgrade(yaml);
                 const slot = parsed.slot;
                 const attrs = parsed.attrs || {};
+                upgradeOriginalAttrs = JSON.parse(JSON.stringify(attrs || {}));
+                upgradeOriginalSlot = slot;
 
                 const allowedSlots = ['主手', '副手', '头盔', '衣服', '裤子', '鞋子'];
                 if (!slot || !allowedSlots.includes(slot)) {
@@ -952,12 +978,45 @@
         const PROGRESSIVE_PRICE_GAMMA = 1.0;
         const DEFAULT_CURVE_REF_FLAT = 5000;
         const DEFAULT_CURVE_REF_PERCENT = 50;
-        // 组合强度加价（防止“先做强属性，后补便宜属性”）
-        // 最终单属性价格 = 基础曲线价 * (1 + alpha * 其他属性强度总和)
-        const COMBO_PRICE_ALPHA = 0.004;
-        const COMBO_INTENSITY_FREE = 4;
-        const COMBO_INTENSITY_CAP_PER_ATTR = 10;
-        const COMBO_INTENSITY_CAP_TOTAL = 80;
+        // 组合加价（防止玩家“分批定制”套利）
+        // 关键要求：无论一次性定制还是分批升级，最终总价应一致（升级按“新总价 - 原总价”补差价）
+        //
+        // 组合思路：按“属性基础价（曲线价×部位倍率）”从高到低排序，越靠后的属性乘更高倍率（条数越多越贵）
+        // - 这样加一个很小的新属性通常排在末尾，不会让前面大词条的倍率突然跳变（避免小升级出现离谱追缴）
+        const COMBO_TIER_STEP = 0.075;     // 第2条起每条额外倍率（0.075≈第二条1.075、第三条1.15…）
+        const COMBO_MULTIPLIER_CAP = 2.5; // 组合倍率上限（防止极端叠加导致爆炸）
+
+        function allocateRoundedIntCosts(rawCosts, targetTotal) {
+            const costs = Array.isArray(rawCosts) ? rawCosts : [];
+            const n = costs.length;
+            const ints = new Array(n).fill(0);
+            if (!Number.isFinite(targetTotal) || targetTotal <= 0 || n === 0) return ints;
+
+            const floors = costs.map(c => (Number.isFinite(c) && c > 0 ? Math.floor(c) : 0));
+            const fracs = costs.map((c, i) => (Number.isFinite(c) && c > 0 ? (c - floors[i]) : 0));
+            let sumFloor = floors.reduce((s, v) => s + v, 0);
+            let need = Math.round(targetTotal - sumFloor);
+
+            for (let i = 0; i < n; i++) ints[i] = floors[i];
+
+            if (need === 0) return ints;
+
+            const idx = [...Array(n).keys()].sort((a, b) => fracs[b] - fracs[a]);
+            if (need > 0) {
+                for (let i = 0; i < n && need > 0; i++, need--) {
+                    ints[idx[i]] += 1;
+                }
+                return ints;
+            }
+
+            // need < 0（理论上很少发生；浮点误差/target 过小），从最小小数部分开始减
+            const idxAsc = [...Array(n).keys()].sort((a, b) => fracs[a] - fracs[b]);
+            for (let i = 0; i < n && need < 0; i++, need++) {
+                const j = idxAsc[i];
+                if (ints[j] > 0) ints[j] -= 1;
+            }
+            return ints;
+        }
 
         function progressiveAttrCost(val, costFactor, curveRef, gamma = PROGRESSIVE_PRICE_GAMMA) {
             const v = Number(val);
@@ -1264,89 +1323,135 @@
         // 价格计算逻辑
         function calculatePrice() {
             enforceAllAttrMax();
-            let totalPrice = 0; // 基础价格从0开始计算
+
             const slot = document.getElementById('itemSlot').value;
-            
-            // 确定部位倍率
-            let slotMultiplier = 1.0;
-            if (slot === '副手') {
-                slotMultiplier = 2.0; // 副手双倍价格
+            const inputs = Array.from(document.querySelectorAll('#attributes-container input'));
+
+            const slotToType = (s) => (['头盔', '衣服', '裤子', '鞋子'].includes(s) ? 'armor' : 'weapon');
+            const getSlotMultiplier = (s) => (s === '副手' ? 2.0 : 1.0);
+            const safeParseAllowed = (raw) => {
+                try { return JSON.parse(raw || '[]'); } catch (e) { return []; }
+            };
+            const isAllowedForSlot = (inputEl, s) => {
+                const type = slotToType(s);
+                const allowed = safeParseAllowed(inputEl.dataset.allowed);
+                return allowed.includes('all') || allowed.includes(type);
+            };
+            const getRefToUse = (inputEl) => {
+                const curveRef = parseFloat(inputEl.dataset.limit);
+                const isPercent = inputEl.dataset.isPercent === 'true';
+                const fallbackRef = isPercent ? DEFAULT_CURVE_REF_PERCENT : DEFAULT_CURVE_REF_FLAT;
+                return Number.isFinite(curveRef) && curveRef > 0 ? curveRef : fallbackRef;
+            };
+            const computeBaseCost = (inputEl, rawVal, s) => {
+                const allowRange = RANGE_PRICE_ATTR_IDS.has(inputEl.id);
+                const parsed = parseAttrInputValue(rawVal, { allowRange });
+                const val = parsed.ok ? Number(parsed.avg) : 0;
+                if (!(Number.isFinite(val) && val > 0)) return 0;
+
+                const costFactor = parseFloat(inputEl.dataset.cost);
+                const refToUse = getRefToUse(inputEl);
+                if (!(Number.isFinite(costFactor) && costFactor > 0)) return 0;
+                if (!(Number.isFinite(refToUse) && refToUse > 0)) return 0;
+
+                let base = 0;
+                if (parsed.ok && parsed.kind === 'range') {
+                    base = progressiveAttrExpectedCostUniform(parsed.min, parsed.max, costFactor, refToUse);
+                } else {
+                    base = progressiveAttrCost(val, costFactor, refToUse);
+                }
+                base = base * getSlotMultiplier(s);
+                return Number.isFinite(base) && base > 0 ? base : 0;
+            };
+            const buildTierCosts = (valuesById, s) => {
+                const items = [];
+                for (const inputEl of inputs) {
+                    if (!isAllowedForSlot(inputEl, s)) continue;
+                    const raw = valuesById ? valuesById[inputEl.id] : inputEl.value;
+                    const base = computeBaseCost(inputEl, raw == null ? '' : String(raw), s);
+                    if (base > 0) items.push({ id: inputEl.id, base });
+                }
+
+                items.sort((a, b) => (b.base - a.base) || (a.id < b.id ? -1 : 1));
+                const out = {};
+                let total = 0;
+                for (let i = 0; i < items.length; i++) {
+                    const m = Math.min(1 + COMBO_TIER_STEP * i, COMBO_MULTIPLIER_CAP);
+                    const cost = items[i].base * m;
+                    out[items[i].id] = cost;
+                    total += cost;
+                }
+                return { costsById: out, totalRaw: total };
+            };
+
+            // 当前配置：总价（用于定制）/ 新总价（用于升级）
+            const current = buildTierCosts(null, slot);
+
+            // 升级：补差价 = 新总价 - 旧总价（保证“分批升级 == 一次性定制”）
+            const isUpgradeWithBase = upgradeMode && upgradeOriginalAttrs && typeof upgradeOriginalAttrs === 'object';
+            let payRaw = current.totalRaw;
+            let perAttrRaw = { ...current.costsById };
+
+            if (isUpgradeWithBase) {
+                const oldSlot = upgradeOriginalSlot || slot;
+                const old = buildTierCosts(upgradeOriginalAttrs, oldSlot);
+                payRaw = Math.max(current.totalRaw - old.totalRaw, 0);
+
+                // 属性旁显示：各属性对“补差价”的贡献（新-旧，理论上应 >=0）
+                const ids = new Set([...Object.keys(current.costsById), ...Object.keys(old.costsById)]);
+                const delta = {};
+                for (const id of ids) {
+                    const d = (current.costsById[id] || 0) - (old.costsById[id] || 0);
+                    delta[id] = Math.max(d, 0);
+                }
+                perAttrRaw = delta;
             }
 
-            const inputs = document.querySelectorAll('#attributes-container input');
-            const pricedAttrs = [];
-            inputs.forEach(input => {
-                // 如果被隐藏了（display: none），则不计算价格
-                const container = input.closest('.attr-input-group');
-                if (container && container.style.display === 'none') return;
+            // 定制最低消费 50；升级不设最低消费
+            const finalPrice = isUpgradeWithBase
+                ? Math.ceil(payRaw)
+                : Math.ceil(Math.max(payRaw, 50));
 
-                const allowRange = RANGE_PRICE_ATTR_IDS.has(input.id);
-                const parsed = parseAttrInputValue(input.value, { allowRange });
-                let val = parsed.ok ? Number(parsed.avg) : 0;
-                let baseCost = 0;
-                let intensity = 0;
-                
-                if (val && val > 0) {
-                    const costFactor = parseFloat(input.dataset.cost);
-                    const curveRef = parseFloat(input.dataset.limit);
-                    const isPercent = input.dataset.isPercent === 'true';
-                    const fallbackRef = isPercent ? DEFAULT_CURVE_REF_PERCENT : DEFAULT_CURVE_REF_FLAT;
-                    
-                    const refToUse = Number.isFinite(curveRef) && curveRef > 0 ? curveRef : fallbackRef;
+            // 统一分配取整：保证“单项显示整数之和 = 总价（或补差价）”
+            const idsForDisplay = inputs.map(i => i.id);
+            const raws = idsForDisplay.map(id => perAttrRaw[id] || 0);
+            const displayTarget = Math.max(Math.ceil(payRaw), 0);
+            const alloc = allocateRoundedIntCosts(raws, displayTarget);
 
-                    // 核心定价算法：平滑递增（无阈值）
-                    if (parsed.ok && parsed.kind === 'range') {
-                        // 区间按期望价格计费（更科学，天然包含“区间越宽越贵”的效应）
-                        baseCost = progressiveAttrExpectedCostUniform(parsed.min, parsed.max, costFactor, refToUse);
+            for (let idx = 0; idx < inputs.length; idx++) {
+                const inputEl = inputs[idx];
+                const priceSpan = document.getElementById(`price-${inputEl.id}`);
+                if (!priceSpan) continue;
+                const v = alloc[idx] || 0;
+                if (v > 0) {
+                    priceSpan.innerText = `+${v}`;
+                    priceSpan.style.opacity = '1';
+                } else {
+                    priceSpan.innerText = '';
+                    priceSpan.style.opacity = '0';
+                }
+            }
+
+            const extraEl = document.getElementById('extraFeeLine');
+            if (extraEl) {
+                if (!isUpgradeWithBase) {
+                    const extraFee = Math.max(finalPrice - displayTarget, 0);
+                    if (extraFee > 0) {
+                        extraEl.style.display = 'block';
+                        extraEl.innerText = `起步价补差 +${extraFee}`;
                     } else {
-                        baseCost = progressiveAttrCost(val, costFactor, refToUse);
+                        extraEl.style.display = 'none';
+                        extraEl.innerText = '';
                     }
-                    intensity = normalizedAttrIntensity(val, refToUse);
-                    
-                    // 应用部位倍率
-                    baseCost = baseCost * slotMultiplier;
+                } else {
+                    extraEl.style.display = 'none';
+                    extraEl.innerText = '';
                 }
-                pricedAttrs.push({ input, baseCost, intensity });
-            });
+            }
 
-            const totalIntensityRaw = pricedAttrs.reduce((sum, item) => sum + item.intensity, 0);
-            const totalIntensity = Math.min(totalIntensityRaw, COMBO_INTENSITY_CAP_TOTAL);
-
-            pricedAttrs.forEach(item => {
-                const { input, baseCost, intensity } = item;
-                let finalAttrCost = 0;
-                if (baseCost > 0) {
-                    // 组合加价：给“多样化的少量副属性”留空间，避免玩家一加词条就被系统惩罚
-                    // 前 COMBO_INTENSITY_FREE 的“其他属性强度”不加价；超过部分再按 alpha 线性加价
-                    const otherIntensityRaw = Math.max(totalIntensity - intensity - COMBO_INTENSITY_FREE, 0);
-                    const otherIntensity = Math.min(otherIntensityRaw, COMBO_INTENSITY_CAP_TOTAL);
-                    const comboMultiplier = 1 + COMBO_PRICE_ALPHA * otherIntensity;
-                    finalAttrCost = baseCost * comboMultiplier;
-                }
-
-                // 更新单个属性的价格显示
-                const priceSpan = document.getElementById(`price-${input.id}`);
-                if (priceSpan) {
-                    if (finalAttrCost > 0) {
-                        priceSpan.innerText = `+${Math.ceil(finalAttrCost)}`;
-                        priceSpan.style.opacity = '1';
-                    } else {
-                        priceSpan.innerText = '';
-                        priceSpan.style.opacity = '0';
-                    }
-                }
-
-                totalPrice += finalAttrCost;
-            });
-
-            // 最低消费 50
-            let finalPrice = Math.ceil(Math.max(totalPrice, 50));
-
-            if (upgradeMode) {
-                // 升级模式：计算差价
-                let diff = finalPrice - originalPrice;
-                // 至少显示 0，或者可以设置一个最小升级手续费
-                return Math.max(diff, 0); 
+            if (upgradeMode && !isUpgradeWithBase) {
+                // 兜底：若未加载升级基底，则回退到旧版“总价差”
+                return Math.max(finalPrice - originalPrice, 0);
             }
 
             return finalPrice;
@@ -1410,6 +1515,10 @@
             const price = calculatePrice();
             document.getElementById('totalPrice').innerText = price;
             requestAnimationFrame(adjustTotalPriceFontSize);
+            const priceLabelEl = document.getElementById('priceLabel');
+            if (priceLabelEl) {
+                priceLabelEl.innerText = (upgradeMode ? '升级补差价' : '定制预估价格');
+            }
 
             const name = document.getElementById('itemName').value || '未命名武器';
             const slot = document.getElementById('itemSlot').value;
@@ -1548,8 +1657,8 @@
             upgradeMode = prevUpgradeMode;
             originalPrice = prevOriginalPrice;
 
-            // 当前应付金额：定制=总价，升级=补差价
-            const payPrice = upgradeMode ? Math.max(fullPriceNow - originalPrice, 0) : fullPriceNow;
+            // 当前应付金额：定制=总价，升级=补差价（只对新增/提高属性收费）
+            const payPrice = upgradeMode ? calculatePrice() : fullPriceNow;
 
             // 生成校验签名（仅用于管理员验证；不做旧格式兼容）
             const signData = {
@@ -1559,6 +1668,7 @@
                 op: upgradeMode ? originalPrice : undefined,
                 s: slot,
                 a: activeAttrs,
+                oa: upgradeMode ? (upgradeOriginalAttrs || {}) : undefined,
                 t: Date.now(),
                 salt: SECRET_SALT
             };
@@ -1644,7 +1754,20 @@
 
                 if (mode === 'upgrade') {
                     const op = Number(signData.op);
-                    const expectedPay = Math.max(fullPriceNow - op, 0);
+                    let expectedPay = Math.max(fullPriceNow - op, 0);
+                    if (signData.oa && typeof signData.oa === 'object') {
+                        // 用“原始属性表”验证升级补价（只对新增/提高属性收费）
+                        const prevUpgradeMode = upgradeMode;
+                        const prevOriginalPrice = originalPrice;
+                        const prevUpgradeOriginalAttrs = upgradeOriginalAttrs;
+                        upgradeMode = true;
+                        originalPrice = 0;
+                        upgradeOriginalAttrs = signData.oa;
+                        expectedPay = calculatePrice();
+                        upgradeMode = prevUpgradeMode;
+                        originalPrice = prevOriginalPrice;
+                        upgradeOriginalAttrs = prevUpgradeOriginalAttrs;
+                    }
                     if (expectedPay == payFromSign) {
                         resultDiv.innerHTML = `<span style='color: #22c55e;'><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="20 6 9 17 4 12"></polyline></svg> 验证通过！(升级订单)</span><br>原价: ${op} | 当前总价: ${fullPriceNow} | 应补: ${expectedPay}`;
                     } else {
