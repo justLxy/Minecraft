@@ -81,8 +81,10 @@ function readArgValue(flag) {
 }
 
 const presetArg = readArgValue("--preset");
-const highFlag = process.argv.includes("--high");
-const preset = presetArg || (highFlag ? "high-obfuscation" : "medium-obfuscation");
+const lowFlag = process.argv.includes("--low");
+const preset =
+  presetArg ||
+  (lowFlag ? "medium-obfuscation" : "high-obfuscation");
 if (!ALLOWED_PRESETS.has(preset)) {
   die(
     `Invalid --preset "${preset}". Allowed: ${Array.from(ALLOWED_PRESETS).join(
@@ -114,13 +116,8 @@ try {
       // so we must NOT rename globals, otherwise those strings won't match renamed function names.
       "--rename-globals",
       "false",
-      // Avoid "anti-debug" options that may freeze DevTools or add runtime brittleness.
-      "--debug-protection",
-      "false",
-      "--self-defending",
-      "false",
-      "--string-array-encoding",
-      "base64",
+      // high-obfuscation preset: rc4 strings, controlFlowFlattening, deadCodeInjection,
+      // selfDefending, debugProtection (freezes DevTools when open)
     ]);
 
     const obf = fs.readFileSync(outJs, "utf8");

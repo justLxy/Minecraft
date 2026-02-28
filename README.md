@@ -88,8 +88,4 @@
 node tools/build-obfuscate.cjs
 ```
 
-- 最强混淆（更慢、也更可能遇到兼容问题）：
-
-```bash
-node tools/build-obfuscate.cjs --high
-```
+默认使用**免费版最强混淆**（high-obfuscation：controlFlowFlattening、deadCodeInjection、rc4 字符串加密、selfDefending、debugProtection）。若需较轻混淆：
