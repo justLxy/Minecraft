@@ -906,10 +906,10 @@
         // allowed: ['weapon', 'armor', 'all'] - 允许的装备类型
         const attributesDB = {
             attack: [
-                { id: 'ap_attack', name: '伤害', color: '&b', costFactor: 0.03, isPercent: false, limit: 10000, label: '伤害', allowed: ['weapon'] },
-                { id: 'ap_pvp_attack', name: 'PVP攻击', color: '&b', costFactor: 0.02, isPercent: false, limit: 10000, label: 'PVP攻击', allowed: ['weapon'] },
-                { id: 'ap_pve_attack', name: 'PVE攻击', color: '&b', costFactor: 0.02, isPercent: false, limit: 10000, label: 'PVE攻击', allowed: ['weapon'] },
-                { id: 'ap_real_attack', name: '真实攻击', color: '&b', costFactor: 0.06, isPercent: false, limit: 4000, label: '真实攻击', allowed: ['weapon'] },
+                { id: 'ap_attack', name: '伤害', color: '&b', costFactor: 0.03, isPercent: false, limit: 20000, label: '伤害', allowed: ['weapon'] },
+                { id: 'ap_pvp_attack', name: 'PVP攻击', color: '&b', costFactor: 0.02, isPercent: false, limit: 20000, label: 'PVP攻击', allowed: ['weapon'] },
+                { id: 'ap_pve_attack', name: 'PVE攻击', color: '&b', costFactor: 0.02, isPercent: false, limit: 20000, label: 'PVE攻击', allowed: ['weapon'] },
+                { id: 'ap_real_attack', name: '真实攻击', color: '&b', costFactor: 0.06, isPercent: false, limit: 10000, label: '真实攻击', allowed: ['weapon'] },
                 { id: 'ap_fire', name: '燃烧几率', color: '&c', costFactor: 1, isPercent: true, limit: 80, label: '燃烧几率', allowed: ['weapon'] },
                 { id: 'ap_fire_damage', name: '火焰攻击', color: '&c', costFactor: 0.02, isPercent: false, limit: 4000, label: '火焰攻击', allowed: ['weapon'] },
                 { id: 'ap_crit', name: '暴击几率', color: '&c', costFactor: 2, isPercent: true, limit: 80, label: '暴击几率', allowed: ['weapon'] },
@@ -927,9 +927,9 @@
             ],
             defense: [
                 { id: 'ap_armor', name: '护甲值', color: '&b', costFactor: 4, isPercent: true, limit: 80, label: '护甲值', allowed: ['armor'] },
-                { id: 'ap_defense', name: '防御', color: '&b', costFactor: 0.025, isPercent: false, limit: 10000, label: '防御', allowed: ['armor'] },
-                { id: 'ap_pvp_defense', name: 'PVP减伤', color: '&b', costFactor: 0.02, isPercent: false, limit: 10000, label: 'PVP减伤', allowed: ['armor'] },
-                { id: 'ap_pve_defense', name: 'PVE减伤', color: '&b', costFactor: 0.02, isPercent: false, limit: 10000, label: 'PVE减伤', allowed: ['armor'] },
+                { id: 'ap_defense', name: '防御', color: '&b', costFactor: 0.025, isPercent: false, limit: 20000, label: '防御', allowed: ['armor'] },
+                { id: 'ap_pvp_defense', name: 'PVP减伤', color: '&b', costFactor: 0.02, isPercent: false, limit: 20000, label: 'PVP减伤', allowed: ['armor'] },
+                { id: 'ap_pve_defense', name: 'PVE减伤', color: '&b', costFactor: 0.02, isPercent: false, limit: 20000, label: 'PVE减伤', allowed: ['armor'] },
                 { id: 'ap_crit_damage_resist', name: '暴伤抵抗', color: '&c', costFactor: 1, isPercent: true, limit: 100, label: '暴伤抵抗', allowed: ['armor'] },
                 { id: 'ap_crit_resist', name: '暴击抵抗', color: '&c', costFactor: 1, isPercent: true, limit: 100, label: '暴击抵抗', allowed: ['armor'] },
                 { id: 'ap_crit_dodge', name: '暴击闪避', color: '&c', costFactor: 1, isPercent: true, limit: 100, label: '暴击闪避', allowed: ['armor'] },
