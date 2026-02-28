@@ -76,9 +76,9 @@
    - 将复制的内容直接发送给服主进行实装。
 
 ---
-*(开发备注：`index.html` 为混淆后的发布版本，`index.dev.html` 为未混淆的源码备份)*
+*(备注：`index.html` 为混淆后的发布版本，`index.dev.html` 为未混淆的源码备份)*
 
-## 一键生成混淆/发布版
+## 生成混淆/发布版
 
 > 目标：把 `index.dev.html` 生成新的发布文件 `index.html`（**JS 混淆 + HTML/CSS 压缩**）。
 
@@ -88,4 +88,4 @@
 node tools/build-obfuscate.cjs
 ```
 
-默认使用**免费版最强混淆**（high-obfuscation：controlFlowFlattening、deadCodeInjection、rc4 字符串加密、selfDefending、debugProtection）。若需较轻混淆：
+默认使用**最强混淆**（high-obfuscation：controlFlowFlattening、deadCodeInjection、rc4 字符串加密、selfDefending、debugProtection）。
