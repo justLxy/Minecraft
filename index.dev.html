@@ -397,7 +397,8 @@
     </div>
 
     <script>
-        const SECRET_SALT = "MemoryAgent_Weapon_2026";
+        // 运行时拼接，避免明文出现在混淆输出
+        const SECRET_SALT = String.fromCharCode(77,101,109,111,114,121,65,103,101,110,116,95,87,101,97,112,111,110,95,50,48,50,54);
 
         // 升级模式状态
         let upgradeMode = false;
